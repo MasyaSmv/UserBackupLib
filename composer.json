@@ -14,9 +14,7 @@
   },
   "extra": {
     "laravel": {
-      "providers": [
-        "App\\Services\\UserBackupService"
-      ]
+      "providers": []
     }
   },
   "minimum-stability": "dev",
