@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use UserBackupLib\Exceptions\BackupException;
 use UserBackupLib\Exceptions\UserDataNotFoundException;
 
@@ -61,6 +62,12 @@ class UserBackupService
             }
 
             $query = $this->buildUserQuery($table);
+
+            // Если запрос не был построен (нет подходящего столбца), продолжаем цикл
+            if ($query === null) {
+                continue;
+            }
+
             $data = DB::select($query, $this->prepareQueryParams());
 
             if (!empty($data)) {
@@ -112,13 +119,17 @@ class UserBackupService
      * @param string $table Название таблицы.
      * @return string SQL-запрос.
      */
-    protected function buildUserQuery(string $table)
+    protected function buildUserQuery(string $table): ?string
     {
+        // Получаем список колонок таблицы
         $columns = DB::connection()->getDoctrineSchemaManager()->listTableColumns($table);
 
-        $field = 'user_id';
+        // Определяем, какое поле использовать для фильтрации
+        $field = null;
 
-        if (isset($columns['account_id'])) {
+        if (isset($columns['user_id'])) {
+            $field = 'user_id';
+        } elseif (isset($columns['account_id'])) {
             $field = 'account_id';
         } elseif (isset($columns['from_account_id'])) {
             $field = 'from_account_id';
@@ -128,7 +139,16 @@ class UserBackupService
             $field = 'active_id';
         }
 
-        return "SELECT * FROM {$table} WHERE {$field} IN (:user_ids)";
+        // Если поле не найдено, пишем в лог и возвращаем null
+        if (!$field) {
+            Log::warning("No suitable identifier column found in table {$table}");
+            return null;
+        }
+
+        // Строим SQL-запрос с использованием найденного поля
+        $placeholders = implode(',', array_fill(0, count($this->prepareQueryParams()), '?'));
+
+        return "SELECT * FROM {$table} WHERE {$field} IN ({$placeholders})";
     }
 
     /**
@@ -136,10 +156,9 @@ class UserBackupService
      *
      * @return array Параметры для SQL-запроса.
      */
-    protected function prepareQueryParams()
+    protected function prepareQueryParams(): array
     {
-        $userIds = array_merge([$this->userId], $this->accountIds, $this->activeIds);
-        return ['user_ids' => $userIds];
+        return array_merge([$this->userId], $this->accountIds, $this->activeIds);
     }
 
     /**
