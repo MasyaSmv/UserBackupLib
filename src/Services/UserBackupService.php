@@ -87,6 +87,22 @@ class UserBackupService
     }
 
     /**
+     * Формирует путь и вызывает сохранение файла
+     *
+     * @return void
+     */
+    public function saveBackupToFile()
+    {
+        $userId = $this->userId;
+        $date = date('Y-m-d');
+        $time = date('H-i-s');
+
+        $filePath = base_path("resources/backup_actives/$userId/$date/$time.json");
+
+        $this->saveToFile($filePath);
+    }
+
+    /**
      * Сохраняет все данные пользователя в файл.
      *
      * @param string $filePath
