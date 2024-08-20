@@ -1,11 +1,13 @@
 # UserBackupLib
 
-Это PHP-библиотека, предназначенная для резервного копирования данных пользователей из нескольких баз данных MySQL.
-Библиотека используется для экспорта данных пользователя и их сохранения в формате JSON с возможностью шифрования.
+UserBackupLib — это мощная PHP-библиотека для резервного копирования данных пользователей из нескольких баз данных
+MySQL.
+Библиотека позволяет экспортировать данные пользователя и сохранять их в формате JSON с возможностью шифрования,
+обеспечивая безопасность и удобство хранения данных.
 
-## Installation
+## Установка
 
-Чтобы установить библиотеку в проект, добавьте следующие строки в файл composer.json:
+Для установки библиотеки в проект добавьте следующие строки в файл composer.json:
 
 ```json
 {
@@ -21,7 +23,7 @@
 }
 ```
 
-После этого выполните команду:
+Затем выполните команду:
 
 ```bash
 composer install
@@ -29,76 +31,76 @@ composer install
 
 ## Использование
 
-### Настройка подключений к базе данных
+### Создание резервной копии данных пользователя
 
-Перед использованием UserBackupService необходимо настроить подключения к базам данных с помощью класса
-DatabaseConnection.
-
-Пример:
-
-```php
-use UserBackupLib\DatabaseConnection;
-
-$dbConfigs = [
-    [
-        'host' => 'localhost',
-        'dbname' => 'database1',
-        'user' => 'username',
-        'password' => 'password',
-    ],
-    [
-        'host' => 'localhost',
-        'dbname' => 'database2',
-        'user' => 'username',
-        'password' => 'password',
-    ],
-];
-
-$connection = new DatabaseConnection($dbConfigs);
-```
-
-## Создание резервной копии данных пользователя
-
-После настройки подключений можно создать резервную копию данных пользователя с помощью класса UserBackupService.
+Для создания резервной копии данных пользователя используйте класс `UserBackupService`.
+Теперь процесс резервного копирования стал еще проще благодаря статическому методу create, который автоматически
+инициализирует все необходимые
+сервисы.
 
 Пример:
 
 ```php
-use UserBackupLib\Services\UserBackupService;
+use App\Services\UserBackupService;
 
 $userId = 123; // Идентификатор пользователя
-$backupService = new UserBackupService($connection->getConnections(), $userId);
-$backupService->backupUserData();
+$accountIds = [1, 2, 3]; // Идентификаторы счетов пользователя (если есть)
+$activeIds = [10, 20]; // Идентификаторы активов пользователя (если есть)
+$ignoredTables = ['temporary_logs']; // Таблицы, которые нужно игнорировать
+
+// Создание сервиса резервного копирования с автоматической инициализацией
+$backupService = UserBackupService::create($userId, $accountIds, $activeIds, $ignoredTables);
+
+// Извлечение всех данных пользователя
+$backupService->fetchAllUserData();
+
+// Сохранение данных в файл
+$date = date('Y-m-d');
+$time = date('H-i-s');
+$filePath = base_path("resources/backup_actives/{$userId}/{$date}/{$time}.json");
+$backupService->saveToFile($filePath);
+
+echo "Резервная копия создана и сохранена по пути: {$filePath}";
 ```
 
-## Обработка исключений
+### Обработка исключений
 
-Если данные пользователя не найдены, метод backupUserData выбросит исключение UserDataNotFoundException.
+Если данные пользователя не найдены, метод `fetchAllUserData` выбросит исключение `UserDataNotFoundException`.
+Обработка этого исключения позволяет вам управлять ситуацией, когда данные отсутствуют.
 
-Его можно обработать следующим образом:
+Пример:
 
 ```php
-use UserBackupLib\Exceptions\UserDataNotFoundException;
+use App\Exceptions\UserDataNotFoundException;
 
 try {
-    $backupService->backupUserData();
+    $backupService->fetchAllUserData();
 } catch (UserDataNotFoundException $e) {
     echo "Ошибка: " . $e->getMessage();
 }
 ```
 
-## Шифрование резервных копий
+### Шифрование резервных копий
 
-Библиотека поддерживает шифрование резервных копий с использованием алгоритма AES-256.
-Шифрование выполняется автоматически после создания резервной копии, и шифрованный файл сохраняется с расширением .enc.
+UserBackupLib поддерживает шифрование резервных копий с использованием алгоритма `AES-256`.
+Шифрование выполняется автоматически после создания резервной копии, и шифрованный файл сохраняется с расширением
+`.enc`.
 
-Структура файлов библиотеки
+Пример шифрования файла:
 
-- `src/UserBackupService.php` - Основной класс для управления резервным копированием данных пользователя.
-- `src/DatabaseConnection.php` - Класс для управления подключениями к базам данных.
-- `src/exceptions/BackupException.php` - Базовый класс исключений, связанных с бэкапом.
-- `src/exceptions/DatabaseConnectionException.php` - Исключение для ошибок подключения к базе данных.
-- `src/exceptions/UserDataNotFoundException.php` - Исключение для ситуации, когда данные пользователя не найдены.
+```php
+$filePath = base_path("resources/backup_actives/{$userId}/{$date}/{$time}.json");
+$backupService->saveToFile($filePath, true); // true означает, что файл будет зашифрован
+```
+
+## Структура файлов библиотеки
+
+- `src/Services/UserBackupService.php` - Основной класс для управления резервным копированием данных пользователя.
+- `src/Services/DatabaseService.php` - Класс для работы с базой данных и извлечения данных пользователя.
+- `src/Services/BackupProcessor.php` - Класс для обработки и подготовки данных пользователя.
+- `src/Services/FileStorageService.php` - Класс для сохранения и шифрования данных в файлы.
+- `src/Exceptions/BackupException.php` - Базовый класс исключений, связанных с бэкапом.
+- `src/Exceptions/UserDataNotFoundException.php` - Исключение для ситуации, когда данные пользователя не найдены.
 
 ## Тестирование
 
@@ -112,4 +114,5 @@ vendor/bin/phpunit --bootstrap vendor/autoload.php tests
 
 UserBackupLib предоставляет удобные инструменты для резервного копирования данных пользователей из нескольких баз данных
 MySQL.
-Библиотека поддерживает шифрование резервных копий и легко интегрируется в различные проекты.
+Библиотека поддерживает шифрование резервных копий, легко интегрируется в различные проекты, и обеспечивает
+высокую степень безопасности и гибкости при работе с данными.
