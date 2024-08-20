@@ -1,7 +1,8 @@
 <?php
 
-namespace UserBackupLib;
+namespace UserBackupLib\Services;
 
+use PDO;
 use UserBackupLib\Exceptions\BackupException;
 use UserBackupLib\Exceptions\UserDataNotFoundException;
 
@@ -104,7 +105,7 @@ class UserBackupService
     /**
      * Извлекает данные пользователя из базы данных.
      *
-     * @param \PDO $db Объект подключения к базе данных.
+     * @param PDO $db Объект подключения к базе данных.
      * @return array Массив с данными пользователя.
      */
     protected function fetchUserDataFromDatabase($db)
@@ -125,7 +126,7 @@ class UserBackupService
             $params = $this->prepareQueryParams();
 
             $statement->execute($params);
-            $data = $statement->fetchAll(\PDO::FETCH_ASSOC);
+            $data = $statement->fetchAll(PDO::FETCH_ASSOC);
 
             if (!empty($data)) {
                 $userData[$table] = $data;
@@ -138,13 +139,13 @@ class UserBackupService
     /**
      * Возвращает список таблиц, связанных с пользователем, из базы данных.
      *
-     * @param \PDO $db Объект подключения к базе данных.
+     * @param PDO $db Объект подключения к базе данных.
      * @return array Массив с названиями таблиц.
      */
     protected function getUserRelatedTables($db)
     {
         $query = $db->query("SHOW TABLES");
-        $tables = $query->fetchAll(\PDO::FETCH_COLUMN);
+        $tables = $query->fetchAll(PDO::FETCH_COLUMN);
         $userRelatedTables = [];
 
         foreach ($tables as $table) {
@@ -159,7 +160,7 @@ class UserBackupService
     /**
      * Проверяет, содержит ли таблица столбец с идентификатором пользователя или счета.
      *
-     * @param \PDO $db Объект подключения к базе данных.
+     * @param PDO $db Объект подключения к базе данных.
      * @param string $table Название таблицы.
      * @return bool True, если столбец существует, иначе False.
      */
@@ -176,7 +177,7 @@ class UserBackupService
     /**
      * Строит SQL-запрос для извлечения данных пользователя из таблицы.
      *
-     * @param \PDO $db Объект подключения к базе данных.
+     * @param PDO $db Объект подключения к базе данных.
      * @param string $table Название таблицы.
      * @return string SQL-запрос.
      */
@@ -187,7 +188,7 @@ class UserBackupService
             LIKE 'user_id' OR LIKE 'account_id' OR LIKE 'from_account_id' OR LIKE 'to_account_id'
         ");
         $query->execute();
-        $column = $query->fetch(\PDO::FETCH_ASSOC);
+        $column = $query->fetch(PDO::FETCH_ASSOC);
 
         $columnName = $column ? $column['Field'] : 'user_id'; // Если нет поля, выбираем user_id по умолчанию.
 

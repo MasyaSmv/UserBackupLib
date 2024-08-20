@@ -64,7 +64,7 @@ $connection = new DatabaseConnection($dbConfigs);
 Пример:
 
 ```php
-use UserBackupLib\UserBackupService;
+use UserBackupLib\Services\UserBackupService;
 
 $userId = 123; // Идентификатор пользователя
 $backupService = new UserBackupService($connection->getConnections(), $userId);

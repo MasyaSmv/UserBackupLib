@@ -2,9 +2,11 @@
 
 namespace UserBackupLib\Exceptions;
 
+use Exception;
+
 /**
  * Исключение, возникающее, когда данные пользователя не найдены.
  */
-class UserDataNotFoundException extends BackupException
+class UserDataNotFoundException extends Exception
 {
 }

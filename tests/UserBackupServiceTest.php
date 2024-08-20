@@ -1,7 +1,6 @@
 <?php
 
 use PHPUnit\Framework\TestCase;
-use UserBackupLib\UserBackupService;
 
 class UserBackupServiceTest extends TestCase
 {
