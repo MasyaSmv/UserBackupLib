@@ -1,54 +1,35 @@
 <?php
 
-namespace UserBackupLib\Services;
+namespace App\Services;
 
-use PDO;
+use Illuminate\Support\Facades\DB;
 use UserBackupLib\Exceptions\BackupException;
 use UserBackupLib\Exceptions\UserDataNotFoundException;
 
 /**
- * Класс UserBackupService отвечает за резервное копирование данных пользователя.
+ * Класс UserBackupService отвечает за резервное копирование данных пользователя в Laravel.
  */
 class UserBackupService
 {
-    /**
-     * @var array Список подключений к базам данных.
-     */
-    protected $databases;
-
-    /**
-     * @var int Идентификатор пользователя.
-     */
     protected $userId;
-
-    /**
-     * @var array Идентификаторы счетов пользователя.
-     */
     protected $accountIds;
-
-    /**
-     * @var array Массив с данными пользователя.
-     */
+    protected $activeIds;
+    protected $ignoredTables;
     protected $userData = [];
-
-    /**
-     * @var array Список таблиц для игнорирования.
-     */
-    protected $ignoredTables = [];
 
     /**
      * Конструктор.
      *
-     * @param array $databases Массив подключений к базам данных (PDO).
      * @param int $userId Идентификатор пользователя.
      * @param array $accountIds Массив идентификаторов счетов пользователя.
+     * @param array $activeIds Массив идентификаторов активов пользователя.
      * @param array $ignoredTables Массив таблиц, которые нужно игнорировать.
      */
-    public function __construct(array $databases, $userId, array $accountIds = [], array $ignoredTables = [])
+    public function __construct(int $userId, array $accountIds = [], array $activeIds = [], array $ignoredTables = [])
     {
-        $this->databases = $databases;
         $this->userId = $userId;
         $this->accountIds = $accountIds;
+        $this->activeIds = $activeIds;
         $this->ignoredTables = $ignoredTables;
     }
 
@@ -72,8 +53,19 @@ class UserBackupService
     {
         $this->userData = [];
 
-        foreach ($this->databases as $db) {
-            $this->appendUserData($this->userData, $this->fetchUserDataFromDatabase($db));
+        $tables = $this->getUserRelatedTables();
+
+        foreach ($tables as $table) {
+            if (in_array($table, $this->ignoredTables)) {
+                continue;
+            }
+
+            $query = $this->buildUserQuery($table);
+            $data = DB::select($query, $this->prepareQueryParams());
+
+            if (!empty($data)) {
+                $this->userData[$table] = $data;
+            }
         }
 
         if (empty($this->userData)) {
@@ -88,8 +80,10 @@ class UserBackupService
      *
      * @param string $filePath Путь к файлу для сохранения.
      * @param bool $encrypt Флаг для шифрования файла (по умолчанию true).
+     *
+     * @throws BackupException
      */
-    public function saveToFile($filePath, $encrypt = true)
+    public function saveToFile(string $filePath, bool $encrypt = true)
     {
         if (empty($this->userData)) {
             throw new BackupException("No data available to save. Please fetch data first.");
@@ -103,96 +97,38 @@ class UserBackupService
     }
 
     /**
-     * Извлекает данные пользователя из базы данных.
+     * Возвращает список таблиц, связанных с пользователем.
      *
-     * @param PDO $db Объект подключения к базе данных.
-     * @return array Массив с данными пользователя.
-     */
-    protected function fetchUserDataFromDatabase($db)
-    {
-        $userTables = $this->getUserRelatedTables($db);
-        $userData = [];
-
-        foreach ($userTables as $table) {
-            // Проверяем, не находится ли таблица в списке игнорируемых
-            if (in_array($table, $this->ignoredTables)) {
-                continue;
-            }
-
-            $query = $this->buildUserQuery($db, $table);
-            $statement = $db->prepare($query);
-
-            // Подготовка параметров для запроса
-            $params = $this->prepareQueryParams();
-
-            $statement->execute($params);
-            $data = $statement->fetchAll(PDO::FETCH_ASSOC);
-
-            if (!empty($data)) {
-                $userData[$table] = $data;
-            }
-        }
-
-        return $userData;
-    }
-
-    /**
-     * Возвращает список таблиц, связанных с пользователем, из базы данных.
-     *
-     * @param PDO $db Объект подключения к базе данных.
      * @return array Массив с названиями таблиц.
      */
-    protected function getUserRelatedTables($db)
+    protected function getUserRelatedTables()
     {
-        $query = $db->query("SHOW TABLES");
-        $tables = $query->fetchAll(PDO::FETCH_COLUMN);
-        $userRelatedTables = [];
-
-        foreach ($tables as $table) {
-            if ($this->hasUserIdentifierColumn($db, $table)) {
-                $userRelatedTables[] = $table;
-            }
-        }
-
-        return $userRelatedTables;
-    }
-
-    /**
-     * Проверяет, содержит ли таблица столбец с идентификатором пользователя или счета.
-     *
-     * @param PDO $db Объект подключения к базе данных.
-     * @param string $table Название таблицы.
-     * @return bool True, если столбец существует, иначе False.
-     */
-    protected function hasUserIdentifierColumn($db, $table)
-    {
-        $query = $db->prepare("
-            SHOW COLUMNS FROM {$table} 
-            LIKE 'user_id' OR LIKE 'account_id' OR LIKE 'from_account_id' OR LIKE 'to_account_id'
-        ");
-        $query->execute();
-        return $query->fetch() ? true : false;
+        return DB::connection()->getDoctrineSchemaManager()->listTableNames();
     }
 
     /**
      * Строит SQL-запрос для извлечения данных пользователя из таблицы.
      *
-     * @param PDO $db Объект подключения к базе данных.
      * @param string $table Название таблицы.
      * @return string SQL-запрос.
      */
-    protected function buildUserQuery($db, $table)
+    protected function buildUserQuery(string $table)
     {
-        $query = $db->prepare("
-            SHOW COLUMNS FROM {$table} 
-            LIKE 'user_id' OR LIKE 'account_id' OR LIKE 'from_account_id' OR LIKE 'to_account_id'
-        ");
-        $query->execute();
-        $column = $query->fetch(PDO::FETCH_ASSOC);
+        $columns = DB::connection()->getDoctrineSchemaManager()->listTableColumns($table);
 
-        $columnName = $column ? $column['Field'] : 'user_id'; // Если нет поля, выбираем user_id по умолчанию.
+        $field = 'user_id';
 
-        return "SELECT * FROM {$table} WHERE {$columnName} = :user_id";
+        if (isset($columns['account_id'])) {
+            $field = 'account_id';
+        } elseif (isset($columns['from_account_id'])) {
+            $field = 'from_account_id';
+        } elseif (isset($columns['to_account_id'])) {
+            $field = 'to_account_id';
+        } elseif (isset($columns['active_id'])) {
+            $field = 'active_id';
+        }
+
+        return "SELECT * FROM {$table} WHERE {$field} IN (:user_ids)";
     }
 
     /**
@@ -202,29 +138,8 @@ class UserBackupService
      */
     protected function prepareQueryParams()
     {
-        if (!empty($this->accountIds)) {
-            return ['user_id' => $this->accountIds];
-        }
-        return ['user_id' => $this->userId];
-    }
-
-    /**
-     * Добавляет новые данные пользователя к уже существующим данным.
-     *
-     * @param array $userData Ссылка на массив с уже существующими данными пользователя.
-     * @param array $newData Массив с новыми данными пользователя.
-     */
-    protected function appendUserData(&$userData, $newData)
-    {
-        foreach ($newData as $table => $data) {
-            if (!isset($userData[$table])) {
-                $userData[$table] = [];
-            }
-
-            foreach ($data as $row) {
-                $userData[$table][] = $row;
-            }
-        }
+        $userIds = array_merge([$this->userId], $this->accountIds, $this->activeIds);
+        return ['user_ids' => $userIds];
     }
 
     /**
@@ -232,10 +147,10 @@ class UserBackupService
      *
      * @param string $filePath Путь к файлу.
      */
-    protected function encryptFile($filePath)
+    protected function encryptFile(string $filePath)
     {
         $outputPath = $filePath . '.enc';
-        $password = 'your-secret-password';
+        $password = env('BACKUP_ENCRYPTION_KEY', 'your-secret-password');
 
         $command = "openssl enc -aes-256-cbc -salt -in {$filePath} -out {$outputPath} -k {$password}";
         shell_exec($command);
