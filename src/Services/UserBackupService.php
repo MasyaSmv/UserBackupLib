@@ -34,6 +34,36 @@ class UserBackupService
     }
 
     /**
+     * Статический метод для создания экземпляра UserBackupService с инициализированными сервисами.
+     *
+     * @param int $userId
+     * @param array $accountIds
+     * @param array $activeIds
+     * @param array $ignoredTables
+     * @return UserBackupService
+     */
+    public static function create(
+        int $userId,
+        array $accountIds = [],
+        array $activeIds = [],
+        array $ignoredTables = []
+    ): self {
+        $databaseService = new DatabaseService();
+        $backupProcessor = new BackupProcessor();
+        $fileStorageService = new FileStorageService();
+
+        return new self(
+            $userId,
+            $accountIds,
+            $activeIds,
+            $ignoredTables,
+            $databaseService,
+            $backupProcessor,
+            $fileStorageService
+        );
+    }
+
+    /**
      * Получает все данные пользователя из базы данных.
      *
      * @return array
