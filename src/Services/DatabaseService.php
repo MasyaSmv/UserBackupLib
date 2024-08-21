@@ -15,28 +15,43 @@ class DatabaseService
      */
     public function fetchUserData(string $table, array $params): array
     {
-        $columns = DB::connection()->getDoctrineSchemaManager()->listTableColumns($table);
-
-        $field = $this->determineFilterField($columns);
+        $columns = $this->getTableColumns($table);
+        $field = $this->determineFilterField($table, $columns);
 
         if (!$field) {
             return [];
         }
 
-        $placeholders = implode(',', array_fill(0, count($params), '?'));
+        $params = $this->prepareParams($field, $columns, $params);
+        $query = $this->buildQuery($table, $field, $params);
 
-        $query = "SELECT * FROM $table WHERE $field IN ($placeholders)";
         return DB::select($query, $params);
+    }
+
+    /**
+     * Получает список колонок для указанной таблицы.
+     *
+     * @param string $table
+     * @return array
+     */
+    protected function getTableColumns(string $table): array
+    {
+        return DB::connection()->getDoctrineSchemaManager()->listTableColumns($table);
     }
 
     /**
      * Определяет поле для фильтрации данных в таблице.
      *
+     * @param string $table
      * @param array $columns
      * @return string|null
      */
-    protected function determineFilterField(array $columns): ?string
+    protected function determineFilterField(string $table, array $columns): ?string
     {
+        if ($table === 'user_account_currencies') {
+            return 'id';
+        }
+
         if (isset($columns['user_id'])) {
             return 'user_id';
         }
@@ -58,5 +73,51 @@ class DatabaseService
         }
 
         return null;
+    }
+
+    /**
+     * Подготавливает параметры для фильтрации, учитывая текстовый формат user_id.
+     *
+     * @param string $field
+     * @param array $columns
+     * @param array $params
+     * @return array
+     */
+    protected function prepareParams(string $field, array $columns, array $params): array
+    {
+        if ($field === 'user_id' && isset($columns['user_id']) && $this->isUserIdText($columns['user_id'])) {
+            return array_map(static function ($id) {
+                return config('app.env') . '-' . $id;
+            }, $params);
+        }
+
+        return $params;
+    }
+
+    /**
+     * Строит SQL-запрос для указанной таблицы и поля.
+     *
+     * @param string $table
+     * @param string $field
+     * @param array $params
+     * @return string
+     */
+    protected function buildQuery(string $table, string $field, array $params): string
+    {
+        $placeholders = implode(',', array_fill(0, count($params), '?'));
+
+        return "SELECT * FROM $table WHERE $field IN ($placeholders)";
+    }
+
+    /**
+     * Проверяет, является ли поле 'user_id' текстовым.
+     *
+     * @param object $column
+     *
+     * @return bool
+     */
+    protected function isUserIdText(object $column): bool
+    {
+        return in_array(strtolower($column->getType()->getName()), ['string', 'text']);
     }
 }
