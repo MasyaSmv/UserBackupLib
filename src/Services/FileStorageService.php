@@ -19,7 +19,7 @@ class FileStorageService
     public function saveToFile(string $filePath, array $data, bool $encrypt = true): string
     {
         // Сохраняем данные в файл
-        Storage::put($filePath, json_encode($data, JSON_PRETTY_PRINT));
+        file_put_contents($filePath, json_encode($data, JSON_PRETTY_PRINT));
 
         // Шифруем файл, если это указано
         if ($encrypt) {
@@ -44,7 +44,10 @@ class FileStorageService
         $command = "openssl enc -aes-256-cbc -salt -in $filePath -out $outputPath -k $password";
         shell_exec($command);
 
-        Storage::delete($filePath);
+        // Удаляем оригинальный файл после шифрования
+        if (file_exists($filePath)) {
+            unlink($filePath);
+        }
     }
 
     /**
@@ -53,11 +56,11 @@ class FileStorageService
      * @param string $encryptedFilePath
      * @param string $decryptedFilePath
      * @return array
-     * @throws Exception
+     * @throws RuntimeException
      */
     public function decryptFile(string $encryptedFilePath, string $decryptedFilePath): array
     {
-        if (!Storage::exists($encryptedFilePath)) {
+        if (!file_exists($encryptedFilePath)) {
             throw new RuntimeException("Encrypted file not found: $encryptedFilePath");
         }
 
@@ -66,8 +69,12 @@ class FileStorageService
         $command = "openssl enc -aes-256-cbc -d -in $encryptedFilePath -out $decryptedFilePath -k $password";
         shell_exec($command);
 
-        $jsonData = Storage::get($decryptedFilePath);
-        Storage::delete($decryptedFilePath); // Удаляем временный расшифрованный файл
+        $jsonData = file_get_contents($decryptedFilePath);
+
+        // Удаляем временный расшифрованный файл
+        if (file_exists($decryptedFilePath)) {
+            unlink($decryptedFilePath);
+        }
 
         return json_decode($jsonData, true);
     }
