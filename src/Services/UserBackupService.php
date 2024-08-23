@@ -17,12 +17,12 @@ class UserBackupService
 
     public function __construct(
         int $userId,
-        array $accountIds = [],
-        array $activeIds = [],
-        array $ignoredTables = [],
         DatabaseService $databaseService,
         BackupProcessor $backupProcessor,
-        FileStorageService $fileStorageService
+        FileStorageService $fileStorageService,
+        array $accountIds = [],
+        array $activeIds = [],
+        array $ignoredTables = []
     ) {
         $this->userId = $userId;
         $this->accountIds = $accountIds;
@@ -37,50 +37,68 @@ class UserBackupService
      * Статический метод для создания экземпляра UserBackupService с инициализированными сервисами.
      *
      * @param int $userId
-     * @param array $accountIds
-     * @param array $activeIds
-     * @param array $ignoredTables
+     * @param array $accountIds Список идентификаторов субсчетов
+     * @param array $activeIds Список идентификаторов активов
+     * @param array $ignoredTables Список игнорируемых таблиц
+     * @param array $connections Список имен подключений к базам данных
+     *
      * @return UserBackupService
      */
     public static function create(
         int $userId,
         array $accountIds = [],
         array $activeIds = [],
-        array $ignoredTables = []
+        array $ignoredTables = [],
+        array $connections = []
     ): self {
-        $databaseService = new DatabaseService();
+        // Инициализация сервиса для работы с несколькими базами данных
+        $databaseService = new DatabaseService($connections);
+
+        // Инициализация остальных сервисов
         $backupProcessor = new BackupProcessor();
         $fileStorageService = new FileStorageService();
 
         return new self(
             $userId,
-            $accountIds,
-            $activeIds,
-            $ignoredTables,
             $databaseService,
             $backupProcessor,
-            $fileStorageService
+            $fileStorageService,
+            $accountIds,
+            $activeIds,
+            $ignoredTables
         );
     }
 
     /**
-     * Получает все данные пользователя из базы данных.
+     * Получает все данные пользователя из всех баз данных.
      *
      * @return array
      */
     public function fetchAllUserData(): array
     {
-        $tables = DB::connection()->getDoctrineSchemaManager()->listTableNames();
+        foreach ($this->databaseService->getConnections() as $connectionName) {
+            // Получаем список таблиц для текущего подключения
+            $tables = DB::connection($connectionName)->getDoctrineSchemaManager()->listTableNames();
 
-        foreach ($tables as $table) {
-            if (in_array($table, $this->ignoredTables)) {
-                continue;
+            foreach ($tables as $table) {
+                // Пропускаем таблицы, которые нужно игнорировать
+                if (in_array($table, $this->ignoredTables)) {
+                    continue;
+                }
+
+                // Проверяем наличие таблицы в базе данных
+                if (!DB::connection($connectionName)->getSchemaBuilder()->hasTable($table)) {
+                    continue;
+                }
+
+                $params = array_merge([$this->userId], $this->accountIds, $this->activeIds);
+                // Извлекаем данные для текущей таблицы из текущего подключения
+                $data = $this->databaseService->fetchUserData($table, $params, $connectionName);
+
+                if (!empty($data)) {
+                    $this->backupProcessor->appendUserData($table, $data);
+                }
             }
-
-            $params = array_merge([$this->userId], $this->accountIds, $this->activeIds);
-            $data = $this->databaseService->fetchUserData($table, $params);
-
-            $this->backupProcessor->appendUserData($table, $data);
         }
 
         return $this->backupProcessor->getUserData();
