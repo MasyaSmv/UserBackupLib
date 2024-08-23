@@ -109,17 +109,49 @@ try {
 }
 ```
 
-### Шифрование резервных копий
+## Сохранение данных в файл и шифрование
 
-UserBackupLib поддерживает шифрование резервных копий с использованием алгоритма `AES-256`.
-Шифрование выполняется автоматически после создания резервной копии, и шифрованный файл сохраняется с расширением
-`.enc`.
+UserBackupLib позволяет сохранять данные в файл с возможностью их шифрования.
+Метод saveToFile теперь возвращает путь до сохраненного файла, что удобно для дальнейших операций.
 
-Пример шифрования файла:
+### Пример использования saveBackupToFile:
+
+Метод saveBackupToFile автоматически сохраняет и шифрует данные, а также возвращает путь до сохраненного файла:
 
 ```php
-$filePath = base_path("resources/backup_actives/{$userId}/{$date}/{$time}.json");
-$backupService->saveToFile($filePath, true); // true означает, что файл будет зашифрован
+use App\Services\UserBackupService;
+
+$userId = 680;
+$connections = ['mysql', 'catalog'];
+
+$backupService = UserBackupService::create($userId, $accountIds, $activeIds, $ignoredTables, $connections);
+
+// Извлечение всех данных пользователя
+$backupService->fetchAllUserData();
+
+// Сохранение данных в файл и получение пути до сохраненного файла
+$filePath = $backupService->saveBackupToFile();
+
+echo "Резервная копия создана и зашифрована по пути: {$filePath}";
+```
+
+### Возврат пути до сохраненного файла
+
+Теперь метод saveToFile возвращает строку, содержащую путь до сохраненного файла.
+Если файл был зашифрован, возвращается путь до зашифрованного файла с расширением .enc.
+
+Пример использования saveToFile:
+
+```php
+use App\Services\FileStorageService;
+
+$fileStorageService = new FileStorageService();
+$data = ['user_id' => 123, 'name' => 'John Doe'];
+
+$filePath = 'resources/backup_actives/3/2024-07-29/17-40-25.json';
+$pathToFile = $fileStorageService->saveToFile($filePath, $data, true); // true для шифрования
+
+echo "Файл сохранен и зашифрован по пути: {$pathToFile}";
 ```
 
 ### Расшифровка файлов
@@ -152,7 +184,7 @@ print_r($data);
 - `src/Exceptions/BackupException.php` - Базовый класс исключений, связанных с бэкапом.
 - `src/Exceptions/UserDataNotFoundException.php` - Исключение для ситуации, когда данные пользователя не найдены.
 
-## Тестирование
+## Тестирование (Пока не реализовано)
 
 Для запуска тестов выполните команду:
 

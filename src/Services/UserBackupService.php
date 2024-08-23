@@ -15,6 +15,22 @@ class UserBackupService
     protected BackupProcessor $backupProcessor;
     protected FileStorageService $fileStorageService;
 
+    /**
+     * Свойство для хранения данных
+     *
+     * @var array
+     */
+    protected array $userData = [];
+
+    /**
+     * @param int $userId
+     * @param DatabaseService $databaseService
+     * @param BackupProcessor $backupProcessor
+     * @param FileStorageService $fileStorageService
+     * @param array $accountIds
+     * @param array $activeIds
+     * @param array $ignoredTables
+     */
     public function __construct(
         int $userId,
         DatabaseService $databaseService,
@@ -101,15 +117,20 @@ class UserBackupService
             }
         }
 
-        return $this->backupProcessor->getUserData();
+        // Сохраняем собранные данные в свойство $userData
+        $this->userData = $this->backupProcessor->getUserData();
+
+        return $this->userData;
     }
 
     /**
-     * Формирует путь и вызывает сохранение файла
+     * Формирует путь, вызывает сохранение файла и возвращает до него путь
      *
-     * @return void
+     * @param bool $encrypt Шифровать ли файл
+     *
+     * @return string
      */
-    public function saveBackupToFile()
+    public function saveBackupToFile(bool $encrypt = true): string
     {
         $userId = $this->userId;
         $date = date('Y-m-d');
@@ -117,17 +138,7 @@ class UserBackupService
 
         $filePath = base_path("resources/backup_actives/$userId/$date/$time.json");
 
-        $this->saveToFile($filePath);
-    }
-
-    /**
-     * Сохраняет все данные пользователя в файл.
-     *
-     * @param string $filePath
-     */
-    public function saveToFile(string $filePath): void
-    {
-        $data = $this->backupProcessor->getUserData();
-        $this->fileStorageService->saveToFile($filePath, $data);
+        // Используем сохраненные данные из $userData
+        return $this->fileStorageService->saveToFile($filePath, $this->userData, $encrypt);
     }
 }

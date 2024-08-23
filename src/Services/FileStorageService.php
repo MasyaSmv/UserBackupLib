@@ -9,19 +9,26 @@ use RuntimeException;
 class FileStorageService
 {
     /**
-     * Сохраняет данные пользователя в файл.
+     * Сохраняет данные пользователя в файл и возвращает путь до сохраненного файла.
      *
      * @param string $filePath
      * @param array $data
      * @param bool $encrypt
+     * @return string
      */
-    public function saveToFile(string $filePath, array $data, bool $encrypt = true): void
+    public function saveToFile(string $filePath, array $data, bool $encrypt = true): string
     {
+        // Сохраняем данные в файл
         Storage::put($filePath, json_encode($data, JSON_PRETTY_PRINT));
 
+        // Шифруем файл, если это указано
         if ($encrypt) {
             $this->encryptFile($filePath);
+            $filePath .= '.enc'; // Обновляем путь до зашифрованного файла
         }
+
+        // Возвращаем путь до сохраненного файла
+        return $filePath;
     }
 
     /**
