@@ -39,7 +39,7 @@ class FileStorageService
      * @return array
      * @throws RuntimeException
      */
-    public function decryptFile(string $encryptedFilePath): array
+    public static function decryptFile(string $encryptedFilePath): array
     {
         if (!file_exists($encryptedFilePath)) {
             throw new RuntimeException("Encrypted file not found: $encryptedFilePath");
