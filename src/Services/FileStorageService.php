@@ -2,7 +2,9 @@
 
 namespace App\Services;
 
+use Exception;
 use Illuminate\Support\Facades\Storage;
+use RuntimeException;
 
 class FileStorageService
 {
@@ -36,5 +38,30 @@ class FileStorageService
         shell_exec($command);
 
         Storage::delete($filePath);
+    }
+
+    /**
+     * Расшифровывает файл с данными пользователя.
+     *
+     * @param string $encryptedFilePath
+     * @param string $decryptedFilePath
+     * @return array
+     * @throws Exception
+     */
+    public function decryptFile(string $encryptedFilePath, string $decryptedFilePath): array
+    {
+        if (!Storage::exists($encryptedFilePath)) {
+            throw new RuntimeException("Encrypted file not found: $encryptedFilePath");
+        }
+
+        $password = env('BACKUP_ENCRYPTION_KEY', 'your-secret-password');
+
+        $command = "openssl enc -aes-256-cbc -d -in $encryptedFilePath -out $decryptedFilePath -k $password";
+        shell_exec($command);
+
+        $jsonData = Storage::get($decryptedFilePath);
+        Storage::delete($decryptedFilePath); // Удаляем временный расшифрованный файл
+
+        return json_decode($jsonData, true);
     }
 }

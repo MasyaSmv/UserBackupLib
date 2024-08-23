@@ -39,7 +39,8 @@ UserBackupLib поддерживает резервное копирование
 
 ### Подключение к нескольким базам данных
 
-В DatabaseService добавлен метод getConnections(), который возвращает список всех подключений, используемых для извлечения данных:
+В DatabaseService добавлен метод getConnections(), который возвращает список всех подключений, используемых для
+извлечения данных:
 
 ```php
 use App\Services\DatabaseService;
@@ -121,6 +122,27 @@ $filePath = base_path("resources/backup_actives/{$userId}/{$date}/{$time}.json")
 $backupService->saveToFile($filePath, true); // true означает, что файл будет зашифрован
 ```
 
+### Расшифровка файлов
+
+UserBackupLib поддерживает расшифровку файлов, которые были ранее зашифрованы.
+Это позволяет восстановить данные пользователя из зашифрованных резервных копий.
+
+Пример расшифровки данных:
+
+```php
+use App\Services\FileStorageService;
+
+$fileStorageService = new FileStorageService();
+
+$encryptedFilePath = 'resources/backup_actives/3/2024-07-29/17-40-25.json.enc';
+$decryptedFilePath = 'resources/backup_actives/3/2024-07-29/17-40-25.json';
+
+$data = $fileStorageService->decryptFile($encryptedFilePath, $decryptedFilePath);
+
+print_r($data);
+
+```
+
 ## Структура файлов библиотеки
 
 - `src/Services/UserBackupService.php` - Основной класс для управления резервным копированием данных пользователя.
@@ -140,5 +162,7 @@ vendor/bin/phpunit --bootstrap vendor/autoload.php tests
 
 ## Заключение
 
-UserBackupLib предоставляет удобные инструменты для резервного копирования данных пользователей из нескольких баз данных MySQL. 
-Библиотека поддерживает шифрование резервных копий, легко интегрируется в различные проекты, и обеспечивает высокую степень безопасности и гибкости при работе с данными.
+UserBackupLib предоставляет удобные инструменты для резервного копирования данных пользователей из нескольких баз данных
+MySQL.
+Библиотека поддерживает шифрование резервных копий, легко интегрируется в различные проекты, и обеспечивает высокую
+степень безопасности и гибкости при работе с данными.
