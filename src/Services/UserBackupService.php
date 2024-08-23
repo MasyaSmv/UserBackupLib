@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 class UserBackupService
 {
@@ -136,9 +137,16 @@ class UserBackupService
         $date = date('Y-m-d');
         $time = date('H-i-s');
 
+        // Формируем путь к файлу в директории resources
         $filePath = base_path("resources/backup_actives/$userId/$date/$time.json");
 
-        // Используем сохраненные данные из $userData
+        // Создаем директорию, если она не существует
+        $directoryPath = dirname($filePath);
+        if (!is_dir($directoryPath) && !mkdir($directoryPath, 0755, true) && !is_dir($directoryPath)) {
+            throw new RuntimeException(sprintf('Directory "%s" was not created', $directoryPath));
+        }
+
+        // Используем сохраненные данные из $userData и возвращаем путь до файла
         return $this->fileStorageService->saveToFile($filePath, $this->userData, $encrypt);
     }
 }
