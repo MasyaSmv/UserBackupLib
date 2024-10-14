@@ -6,26 +6,8 @@ UserBackupLib — библиотека для резервного копиро�
 
 ## Установка
 
-Для установки библиотеки в проект добавьте следующие строки в файл `composer.json`:
-
-```json
-{
-  "repositories": [
-    {
-      "type": "vcs",
-      "url": "git@github.com:MasyaSmv/UserBackupLib.git"
-    }
-  ],
-  "require": {
-    "fin/user-backup-lib": "dev-main"
-  }
-}
-```
-
-Затем выполните команду:
-
 ```bash
-composer install
+composer require fin/user-backup-lib
 ```
 
 ## Использование
