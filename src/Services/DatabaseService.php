@@ -23,6 +23,7 @@ class DatabaseService
      *
      * @param string $table
      * @param array $params
+     *
      * @return array
      */
     public function fetchUserDataFromAllDatabases(string $table, array $params): array
@@ -42,7 +43,11 @@ class DatabaseService
      * Извлекает данные пользователя из указанной таблицы и базы данных.
      *
      * @param string $table
-     * @param array $params
+     * @param array{
+     *     user_id: array,
+     *     account_id: array,
+     *     active_id: array,
+     * } $params
      * @param string $connectionName
      *
      * @return array
@@ -62,12 +67,11 @@ class DatabaseService
             return [];
         }
 
-        $params = $this->prepareParams($field, $columns, $params);
+        $params = $this->prepareParams($field, $columns, $params[$field] ?? $params['account_id']);
         $query = $this->buildQuery($table, $field, $params);
 
         return DB::connection($connectionName)->select($query, $params);
     }
-
 
     /**
      * Получает список колонок для указанной таблицы и базы данных.

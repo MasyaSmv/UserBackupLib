@@ -82,7 +82,7 @@ class UserBackupService
             $fileStorageService,
             $accountIds,
             $activeIds,
-            $ignoredTables
+            $ignoredTables,
         );
     }
 
@@ -108,7 +108,11 @@ class UserBackupService
                     continue;
                 }
 
-                $params = array_merge([$this->userId], $this->accountIds, $this->activeIds);
+                $params = [
+                    'user_id' => [$this->userId],
+                    'account_id' => $this->accountIds,
+                    'active_id' => $this->activeIds,
+                ];
                 // Извлекаем данные для текущей таблицы из текущего подключения
                 $data = $this->databaseService->fetchUserData($table, $params, $connectionName);
 
