@@ -67,7 +67,13 @@ class DatabaseService
             return [];
         }
 
-        $params = $this->prepareParams($field, $columns, $params[$field] ?? $params['account_id']);
+        //Массив может быть пустым и тогда в sql запросе вылетит ошибка
+        $params = $params[$field] ?? $params['account_id'];
+        if (empty($params)) {
+            return [];
+        }
+
+        $params = $this->prepareParams($field, $columns, $params);
         $query = $this->buildQuery($table, $field, $params);
 
         return DB::connection($connectionName)->select($query, $params);
