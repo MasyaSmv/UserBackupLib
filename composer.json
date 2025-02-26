@@ -3,7 +3,7 @@
   "description": "Библиотека PHP для резервного копирования пользовательских данных из нескольких баз данных.",
   "type": "library",
   "require": {
-    "php": "^7.4",
+    "php": "^8.0",
     "illuminate/support": "^8.0",
     "illuminate/database": "^8.0"
   },

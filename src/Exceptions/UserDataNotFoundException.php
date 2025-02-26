@@ -1,6 +1,6 @@
 <?php
 
-namespace UserBackupLib\Exceptions;
+namespace App\Exceptions;
 
 use Exception;
 
