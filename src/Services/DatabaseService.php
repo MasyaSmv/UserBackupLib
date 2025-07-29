@@ -102,7 +102,7 @@ class DatabaseService
      */
     protected function determineFilterField(string $table, array $columns): ?string
     {
-        if ($table === 'user_subaccounts') {
+        if ($table === 'user_subaccounts' || $table === 'users') {
             return 'id';
         }
 

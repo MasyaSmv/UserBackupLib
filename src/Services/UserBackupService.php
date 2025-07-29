@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Exception;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -90,6 +91,7 @@ class UserBackupService
      * Получает все данные пользователя из всех баз данных.
      *
      * @return array
+     * @throws Exception
      */
     public function fetchAllUserData(): array
     {
@@ -108,11 +110,12 @@ class UserBackupService
                     continue;
                 }
 
-                $params = [
+                $params = $table === 'users' ? ['id' => [$this->userId]] : [
                     'user_id' => [$this->userId],
                     'account_id' => $this->accountIds,
                     'active_id' => $this->activeIds,
                 ];
+                
                 // Извлекаем данные для текущей таблицы из текущего подключения
                 $data = $this->databaseService->fetchUserData($table, $params, $connectionName);
 
