@@ -37,6 +37,9 @@
     }
   },
   "config": {
-    "secure-http": true
+    "secure-http": true,
+    "platform": {
+      "php": "8.0.30"
+    }
   }
 }
