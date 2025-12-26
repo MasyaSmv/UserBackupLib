@@ -10,9 +10,29 @@ trait TableFiltering
 {
     protected function getTableColumns(string $table, string $connectionName): array
     {
-        return DB::connection($connectionName)
-            ->getDoctrineSchemaManager()
-            ->listTableColumns($table);
+        $connection = DB::connection($connectionName);
+        $driver = $connection->getDriverName();
+
+        if ($driver === 'sqlite') {
+            $columns = $connection->select(
+                'PRAGMA table_info(' . $connection->getPdo()->quote($table) . ')'
+            );
+
+            return array_map(static function ($column) {
+                return $column->name;
+            }, $columns);
+        }
+
+        // MySQL, MariaDB
+        $database = $connection->getDatabaseName();
+        $result = $connection->select(
+            'SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?',
+            [$database, $table],
+        );
+
+        return array_map(static function ($column) {
+            return $column->COLUMN_NAME;
+        }, $result);
     }
 
     /**
@@ -29,23 +49,23 @@ trait TableFiltering
             return 'id';
         }
 
-        if (isset($columns['user_id'])) {
+        if (in_array('user_id', $columns, true)) {
             return 'user_id';
         }
 
-        if (isset($columns['account_id'])) {
+        if (in_array('account_id', $columns, true)) {
             return 'account_id';
         }
 
-        if (isset($columns['from_account_id'])) {
+        if (in_array('from_account_id', $columns, true)) {
             return 'from_account_id';
         }
 
-        if (isset($columns['to_account_id'])) {
+        if (in_array('to_account_id', $columns, true)) {
             return 'to_account_id';
         }
 
-        if (isset($columns['active_id'])) {
+        if (in_array('active_id', $columns, true)) {
             return 'active_id';
         }
 
@@ -54,27 +74,6 @@ trait TableFiltering
 
     protected function prepareParams(string $field, array $columns, array $params): array
     {
-        if ($field === 'user_id'
-            && isset($columns['user_id'])
-            && $this->isUserIdText($columns['user_id'])
-        ) {
-            return array_map(static function ($id) {
-                return config('app.env') . '-' . $id;
-            }, $params);
-        }
-
         return $params;
-    }
-
-    /**
-     * Проверяет текстовый ли тип user_id, чтобы префиксовать env.
-     *
-     * @param object $column
-     *
-     * @return bool
-     */
-    protected function isUserIdText(object $column): bool
-    {
-        return in_array(strtolower($column->getType()->getName()), ['string', 'text'], true);
     }
 }
