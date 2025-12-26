@@ -54,7 +54,7 @@ class UserDataDeletionService implements UserDataDeletionServiceInterface
                     continue;
                 }
 
-                $params = $this->buildParams($field, $userId, $accountIds, $activeIds);
+                $params = $this->buildParams($table, $field, $userId, $accountIds, $activeIds);
 
                 if (empty($params)) {
                     continue;
@@ -66,17 +66,29 @@ class UserDataDeletionService implements UserDataDeletionServiceInterface
         }
     }
 
-    private function buildParams(string $field, int $userId, array $accountIds, array $activeIds): array
-    {
-        if ($field === 'id') {
+    private function buildParams(
+        string $table,
+        string $field,
+        int $userId,
+        array $accountIds,
+        array $activeIds
+    ): array {
+        // users.id = userId
+        if ($table === 'users' && $field === 'id') {
             return [$userId];
         }
 
+        // user_subaccounts.id = subaccountIds
+        if ($table === 'user_subaccounts' && $field === 'id') {
+            return $accountIds;
+        }
+
+        // Универсальные поля
         if ($field === 'user_id') {
             return [$userId];
         }
 
-        if ($field === 'account_id' || $field === 'from_account_id' || $field === 'to_account_id') {
+        if (in_array($field, ['account_id', 'from_account_id', 'to_account_id', 'subaccount_id'], true)) {
             return $accountIds;
         }
 
@@ -84,8 +96,14 @@ class UserDataDeletionService implements UserDataDeletionServiceInterface
             return $activeIds;
         }
 
+        /**
+         * Ключевой момент:
+         * если фильтр = id, но мы не знаем, какие id подставлять — лучше НЕ удалять,
+         * чем удалить не то (или, как сейчас, удалить одну “случайную” запись).
+         */
         return [];
     }
+
 
     private function deleteRows(string $connectionName, string $table, string $field, array $ids): void
     {
