@@ -24,7 +24,7 @@
   "extra": {
     "laravel": {
       "providers": [
-        "App\\\\UserBackupServiceProvider"
+        "App\\UserBackupServiceProvider"
       ]
     }
   },
