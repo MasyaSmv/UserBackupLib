@@ -1,17 +1,25 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services;
 
+use App\Contracts\DatabaseServiceInterface;
+use App\Services\Concerns\TableFiltering;
+use Generator;
 use Illuminate\Support\Facades\DB;
 
-class DatabaseService
+/**
+ * Потоковое получение пользовательских данных из множества подключений.
+ */
+class DatabaseService implements DatabaseServiceInterface
 {
+    use TableFiltering;
+
     protected array $connections;
 
     /**
-     * Конструктор для инициализации подключений к базам данных.
-     *
-     * @param array $connections Список конфигураций для подключений.
+     * @param array<int, string> $connections Список имён подключений, зарегистрированных в config/database.php.
      */
     public function __construct(array $connections)
     {
@@ -19,12 +27,7 @@ class DatabaseService
     }
 
     /**
-     * Извлекает данные пользователя из всех указанных баз данных.
-     *
-     * @param string $table
-     * @param array $params
-     *
-     * @return array
+     * {@inheritdoc}
      */
     public function fetchUserDataFromAllDatabases(string $table, array $params): array
     {
@@ -35,153 +38,69 @@ class DatabaseService
             $allData[] = $data;
         }
 
-        // Объединяем данные из всех подключений в одном массиве
         return !empty($allData) ? array_merge(...$allData) : [];
     }
 
     /**
-     * Извлекает данные пользователя из указанной таблицы и базы данных.
-     *
-     * @param string $table
-     * @param array{
-     *     user_id: array,
-     *     account_id: array,
-     *     active_id: array,
-     * } $params
-     * @param string $connectionName
-     *
-     * @return array
+     * {@inheritdoc}
      */
     public function fetchUserData(string $table, array $params, string $connectionName): array
     {
-        // Проверяем наличие таблицы в базе данных перед выполнением запроса
-        if (!DB::connection($connectionName)->getSchemaBuilder()->hasTable($table)) {
-            return [];
+        return iterator_to_array($this->streamUserData($table, $params, $connectionName));
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function streamUserData(
+        string $table,
+        array $params,
+        string $connectionName,
+        int $chunkSize = 1000
+    ): Generator {
+        $schema = DB::connection($connectionName)->getSchemaBuilder();
+
+        if (!$schema->hasTable($table)) {
+            return;
         }
 
         $columns = $this->getTableColumns($table, $connectionName);
         $field = $this->determineFilterField($table, $columns);
 
-        // Если поле для фильтрации не найдено, пропускаем запрос
         if (!$field) {
-            return [];
+            return;
         }
 
-        //Массив может быть пустым и тогда в sql запросе вылетит ошибка
-        $params = $params[$field] ?? $params['account_id'];
-        if (empty($params)) {
-            return [];
+        $filterValues = $params[$field] ?? $params['account_id'] ?? [];
+
+        if (empty($filterValues)) {
+            return;
         }
 
-        $params = $this->prepareParams($field, $columns, $params);
-        $query = $this->buildQuery($table, $field, $params);
+        $filterValues = $this->prepareParams($field, $columns, $filterValues);
+        $connection = DB::connection($connectionName);
 
-        return DB::connection($connectionName)->select($query, $params);
+        $page = 1;
+
+        do {
+            $chunk = $connection->table($table)
+                ->whereIn($field, $filterValues)
+                ->orderBy($field)
+                ->forPage($page, $chunkSize)
+                ->get();
+
+            $page++;
+
+            if ($chunk->isEmpty()) {
+                break;
+            }
+
+            foreach ($chunk as $row) {
+                yield (array) $row;
+            }
+        } while ($chunk->count() === $chunkSize);
     }
 
-    /**
-     * Получает список колонок для указанной таблицы и базы данных.
-     *
-     * @param string $table
-     * @param string $connectionName
-     *
-     * @return array
-     */
-    protected function getTableColumns(string $table, string $connectionName): array
-    {
-        return DB::connection($connectionName)->getDoctrineSchemaManager()->listTableColumns($table);
-    }
-
-    /**
-     * Определяет поле для фильтрации данных в таблице.
-     *
-     * @param string $table
-     * @param array $columns
-     *
-     * @return string|null
-     */
-    protected function determineFilterField(string $table, array $columns): ?string
-    {
-        if ($table === 'user_subaccounts' || $table === 'users') {
-            return 'id';
-        }
-
-        if (isset($columns['user_id'])) {
-            return 'user_id';
-        }
-
-        if (isset($columns['account_id'])) {
-            return 'account_id';
-        }
-
-        if (isset($columns['from_account_id'])) {
-            return 'from_account_id';
-        }
-
-        if (isset($columns['to_account_id'])) {
-            return 'to_account_id';
-        }
-
-        if (isset($columns['active_id'])) {
-            return 'active_id';
-        }
-
-        return null;
-    }
-
-    /**
-     * Подготавливает параметры для фильтрации, учитывая текстовый формат user_id.
-     *
-     * @param string $field
-     * @param array $columns
-     * @param array $params
-     *
-     * @return array
-     */
-    protected function prepareParams(string $field, array $columns, array $params): array
-    {
-        if ($field === 'user_id' && isset($columns['user_id']) && $this->isUserIdText($columns['user_id'])) {
-            return array_map(static function ($id) {
-                return config('app.env') . '-' . $id;
-            }, $params);
-        }
-
-        return $params;
-    }
-
-    /**
-     * Строит SQL-запрос для указанной таблицы и поля.
-     *
-     * @param string $table
-     * @param string $field
-     * @param array $params
-     *
-     * @return string
-     */
-    protected function buildQuery(string $table, string $field, array $params): string
-    {
-        $placeholders = implode(',', array_fill(0, count($params), '?'));
-
-        return "SELECT * FROM $table WHERE $field IN ($placeholders)";
-    }
-
-    /**
-     * Проверяет, является ли поле 'user_id' текстовым.
-     *
-     * @param object $column
-     *
-     * @return bool
-     */
-    protected function isUserIdText(object $column): bool
-    {
-        return in_array(strtolower($column->getType()->getName()), ['string', 'text']);
-    }
-
-    /**
-     * Возвращает все имена подключений
-     *
-     * @return array
-     */
     public function getConnections(): array
     {
         return $this->connections;

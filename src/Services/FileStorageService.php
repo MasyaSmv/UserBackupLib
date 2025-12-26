@@ -1,11 +1,17 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services;
 
+use App\Contracts\FileStorageServiceInterface;
 use Illuminate\Support\Facades\Crypt;
 use RuntimeException;
 
-class FileStorageService
+/**
+ * Потоковая запись/чтение бэкапов с опциональным шифрованием чанками.
+ */
+class FileStorageService implements FileStorageServiceInterface
 {
     /**
      * Расшифровывает файл с данными пользователя.
@@ -31,14 +37,10 @@ class FileStorageService
             throw new RuntimeException("Failed to read file: $encryptedFilePath");
         }
 
-        // Если расширение .enc — считаем, что внутри зашифрованные данные
         if (pathinfo($encryptedFilePath, PATHINFO_EXTENSION) === 'enc') {
-            // Определяем формат: старый (одна строка) или новый (много строк-чанков)
             if (!str_contains($rawContent, "\n") && !str_contains($rawContent, "\r")) {
-                // Старый формат: один шифротекст целиком
                 $jsonData = Crypt::decryptString($rawContent);
             } else {
-                // Новый формат: каждый чанк — отдельная строка с шифротекстом
                 $lines = preg_split('/\r\n|\n|\r/', trim($rawContent));
                 $jsonBuffer = '';
 
@@ -54,7 +56,6 @@ class FileStorageService
                 $jsonData = $jsonBuffer;
             }
         } else {
-            // Незашифрованный JSON
             $jsonData = $rawContent;
         }
 
@@ -73,77 +74,167 @@ class FileStorageService
         return $decoded;
     }
 
-    /**
-     * Сохраняет данные пользователя в файл и возвращает путь до сохраненного файла.
-     *
-     * При $encrypt = true:
-     *  - JSON режется на чанки фиксированного размера;
-     *  - каждый чанк шифруется отдельно;
-     *  - зашифрованные чанки пишутся в файл построчно.
-     *
-     * Это позволяет избежать пикового потребления памяти при шифровании
-     * огромного JSON'а одной строкой.
-     *
-     * @param string $filePath Путь до файла БЕЗ расширения .enc
-     * @param array $data Данные для сохранения
-     * @param bool $encrypt Шифровать ли данные
-     *
-     * @return string Итоговый путь до файла (с учётом .enc для зашифрованных)
-     */
-    public function saveToFile(string $filePath, array $data, bool $encrypt = true): string
+    public function saveToFile(string $filePath, iterable $data, bool $encrypt = true): string
     {
-        // Преобразуем данные в JSON.
-        // JSON_UNESCAPED_UNICODE — чтобы не раздувать строку \uXXXX-последовательностями.
-        $jsonData = json_encode($data, JSON_UNESCAPED_UNICODE);
+        $tempPath = $this->createDirectoryAndTempFile($filePath);
 
-        if ($jsonData === false) {
-            throw new RuntimeException('Failed to encode backup data to JSON: ' . json_last_error_msg());
+        $tempHandle = fopen($tempPath, 'wb');
+
+        if (!$tempHandle) {
+            throw new RuntimeException("Unable to open temp file for writing: {$tempPath}");
+        }
+
+        try {
+            $this->writeJsonStream($tempHandle, $data);
+        } finally {
+            fclose($tempHandle);
         }
 
         if ($encrypt) {
-            // Для зашифрованного файла добавляем .enc
-            $filePath .= '.enc';
+            $encryptedPath = $filePath . '.enc';
+            $this->encryptTempFile($tempPath, $encryptedPath);
 
-            $directoryPath = dirname($filePath);
-            if (!is_dir($directoryPath) && !mkdir($directoryPath, 0755, true) && !is_dir($directoryPath)) {
-                throw new RuntimeException(sprintf('Directory "%s" was not created', $directoryPath));
-            }
+            return $encryptedPath;
+        }
 
-            $handle = fopen($filePath, 'wb');
-            if (!$handle) {
-                throw new RuntimeException("Unable to open file for writing: {$filePath}");
-            }
-
-            try {
-                $length = strlen($jsonData);
-                $offset = 0;
-                $chunkSize = 5 * 1024 * 1024; // 5 MB на один чанк
-
-                while ($offset < $length) {
-                    // Вырезаем кусок исходного JSON
-                    $chunk = substr($jsonData, $offset, $chunkSize);
-
-                    // Шифруем только этот чанк
-                    $encryptedChunk = Crypt::encryptString($chunk);
-
-                    // Каждую зашифрованную строку пишем с переводом строки
-                    fwrite($handle, $encryptedChunk . PHP_EOL);
-
-                    $offset += $chunkSize;
-                }
-            } finally {
-                fclose($handle);
-            }
-        } else {
-            // Без шифрования — просто пишем JSON целиком
-            $directoryPath = dirname($filePath);
-            if (!is_dir($directoryPath) && !mkdir($directoryPath, 0755, true) && !is_dir($directoryPath)) {
-                throw new RuntimeException(sprintf('Directory "%s" was not created', $directoryPath));
-            }
-
-            file_put_contents($filePath, $jsonData);
+        if (!rename($tempPath, $filePath)) {
+            throw new RuntimeException("Unable to move temp file to {$filePath}");
         }
 
         return $filePath;
+    }
+
+    /**
+     * @param resource $handle
+     * @param iterable<string, iterable> $data
+     */
+    private function writeJsonStream($handle, iterable $data): void
+    {
+        $this->writeChunk($handle, '{');
+
+        $isFirstTable = true;
+
+        foreach ($data as $table => $tableChunks) {
+            if (!$isFirstTable) {
+                $this->writeChunk($handle, ',');
+            }
+
+            $this->writeChunk($handle, json_encode((string) $table, JSON_UNESCAPED_UNICODE) . ':[');
+
+            $isFirstRow = true;
+
+            foreach ($this->iterateTableRows($tableChunks) as $row) {
+                if (!$isFirstRow) {
+                    $this->writeChunk($handle, ',');
+                }
+
+                $encodedRow = json_encode($row, JSON_UNESCAPED_UNICODE);
+                if ($encodedRow === false) {
+                    throw new RuntimeException('Failed to encode backup row to JSON: ' . json_last_error_msg());
+                }
+
+                $this->writeChunk($handle, $encodedRow);
+                $isFirstRow = false;
+            }
+
+            $this->writeChunk($handle, ']');
+            $isFirstTable = false;
+        }
+
+        $this->writeChunk($handle, '}');
+    }
+
+    /**
+     * @param iterable $tableChunks
+     * @return iterable<array|\JsonSerializable|scalar|null>
+     */
+    private function iterateTableRows(iterable $tableChunks): iterable
+    {
+        foreach ($tableChunks as $chunk) {
+            if (is_iterable($chunk)) {
+                foreach ($chunk as $row) {
+                    yield $this->normalizeRow($row);
+                }
+            } else {
+                yield $this->normalizeRow($chunk);
+            }
+        }
+    }
+
+    private function normalizeRow($row)
+    {
+        if (is_object($row)) {
+            return (array) $row;
+        }
+
+        return $row;
+    }
+
+    private function writeChunk($handle, string $chunk): void
+    {
+        if (fwrite($handle, $chunk) === false) {
+            throw new RuntimeException('Failed to write backup chunk to file');
+        }
+    }
+
+    /**
+     * Создаёт директорию и временный файл для атомарной записи.
+     *
+     * @param string $filePath
+     *
+     * @return string
+     */
+    private function createDirectoryAndTempFile(string $filePath): string
+    {
+        $directoryPath = dirname($filePath);
+
+        if (!is_dir($directoryPath) && !mkdir($directoryPath, 0755, true) && !is_dir($directoryPath)) {
+            throw new RuntimeException(sprintf('Directory "%s" was not created', $directoryPath));
+        }
+
+        $tempPath = $filePath . '.tmp';
+
+        if (file_exists($tempPath)) {
+            unlink($tempPath);
+        }
+
+        return $tempPath;
+    }
+
+    /**
+     * Шифрует временный файл построчно и удаляет исходник.
+     *
+     * @param string $tempPath
+     * @param string $encryptedPath
+     */
+    private function encryptTempFile(string $tempPath, string $encryptedPath): void
+    {
+        $readHandle = fopen($tempPath, 'rb');
+        $writeHandle = fopen($encryptedPath, 'wb');
+
+        if (!$readHandle || !$writeHandle) {
+            throw new RuntimeException("Unable to open file handles for encryption: {$tempPath}");
+        }
+
+        try {
+            $chunkSize = 5 * 1024 * 1024; // 5 MB
+            while (!feof($readHandle)) {
+                $chunk = fread($readHandle, $chunkSize);
+                if ($chunk === false) {
+                    throw new RuntimeException("Failed to read temp file: {$tempPath}");
+                }
+
+                if ($chunk === '') {
+                    continue;
+                }
+
+                $encryptedChunk = Crypt::encryptString($chunk);
+                $this->writeChunk($writeHandle, $encryptedChunk . PHP_EOL);
+            }
+        } finally {
+            fclose($readHandle);
+            fclose($writeHandle);
+            unlink($tempPath);
+        }
     }
 }

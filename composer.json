@@ -7,17 +7,36 @@
     "illuminate/support": "^8.0",
     "illuminate/database": "^8.0"
   },
+  "require-dev": {
+    "orchestra/testbench": "^6.0",
+    "phpunit/phpunit": "^9.6"
+  },
   "autoload": {
     "psr-4": {
-      "App\\Services\\": "src/Services/",
-      "App\\Exceptions\\": "src/Exceptions/"
+      "App\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Tests\\": "tests/"
     }
   },
   "extra": {
     "laravel": {
-      "providers": []
+      "providers": [
+        "App\\\\UserBackupServiceProvider"
+      ]
     }
   },
   "minimum-stability": "dev",
-  "prefer-stable": true
+  "prefer-stable": true,
+  "repositories": {
+    "packagist": {
+      "type": "composer",
+      "url": "https://repo.packagist.org"
+    }
+  },
+  "config": {
+    "secure-http": true
+  }
 }
