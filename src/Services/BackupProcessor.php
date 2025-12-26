@@ -1,34 +1,31 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services;
 
-class BackupProcessor
+use App\Contracts\BackupProcessorInterface;
+
+class BackupProcessor implements BackupProcessorInterface
 {
+    /**
+     * @var array<string, array<int, iterable>>
+     */
     protected array $userData = [];
 
-    /**
-     * Добавляет данные пользователя к существующему набору данных.
-     *
-     * @param string $table
-     * @param array $data
-     */
-    public function appendUserData(string $table, array $data): void
+    public function appendUserData(string $table, iterable $data): void
     {
-        if (!empty($data)) {
-            if (!isset($this->userData[$table])) {
-                $this->userData[$table] = [];
-            }
-
-            foreach ($data as $row) {
-                $this->userData[$table][] = $row;
-            }
+        if (!isset($this->userData[$table])) {
+            $this->userData[$table] = [];
         }
+
+        $this->userData[$table][] = $data;
     }
 
     /**
-     * Возвращает все собранные данные пользователя.
+     * Возвращает накопленные данные, не итерируя их сразу для экономии памяти.
      *
-     * @return array
+     * @return array<string, array<int, iterable>>
      */
     public function getUserData(): array
     {
@@ -36,7 +33,7 @@ class BackupProcessor
     }
 
     /**
-     * Очищает данные пользователя.
+     * Сбрасывает внутренний буфер.
      */
     public function clearUserData(): void
     {
