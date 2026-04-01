@@ -9,7 +9,6 @@ use App\Contracts\DatabaseServiceInterface;
 use App\Contracts\FileStorageServiceInterface;
 use App\Contracts\UserBackupServiceInterface;
 use Illuminate\Support\Facades\DB;
-use RuntimeException;
 
 /**
  * Фасад, координирующий потоковую выгрузку, шифрование и сохранение бэкапа пользователя.
@@ -153,25 +152,15 @@ class UserBackupService implements UserBackupServiceInterface
     }
 
     /**
-     * Сохраняет собранный бэкап в файл; путь формируется по userId и текущему времени.
+     * Сохраняет собранный бэкап в указанный путь.
      *
+     * @param string $filePath Путь, куда нужно сохранить бэкап.
      * @param bool $encrypt Признак шифрования результата.
      *
      * @return string
      */
-    public function saveBackupToFile(bool $encrypt = true): string
+    public function saveBackupToFile(string $filePath, bool $encrypt = true): string
     {
-        $userId = $this->userId;
-        $date = date('Y-m-d');
-        $time = date('H-i-s');
-
-        $filePath = base_path("resources/backup_actives/$userId/$date/$time.json");
-
-        $directoryPath = dirname($filePath);
-        if (!is_dir($directoryPath) && !mkdir($directoryPath, 0755, true) && !is_dir($directoryPath)) {
-            throw new RuntimeException(sprintf('Directory "%s" was not created', $directoryPath));
-        }
-
         return $this->fileStorageService->saveToFile($filePath, $this->userData, $encrypt);
     }
 }

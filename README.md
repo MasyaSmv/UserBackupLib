@@ -31,8 +31,14 @@ $backup = UserBackupService::create(
     connections: ['mysql', 'replica'],
 );
 
-$backup->fetchAllUserData();          // собираем данные потоками
-$path = $backup->saveBackupToFile();  // шифруем и сохраняем, вернётся путь вида resources/backup_actives/{user}/{date}/{time}.json.enc
+$backup->fetchAllUserData(); // собираем данные потоками
+$path = $backup->saveBackupToFile(
+    '/tmp/backup_42.json',
+); // шифруем и сохраняем, вернётся путь /tmp/backup_42.json.enc
+
+// Логику выбора пути держит приложение:
+// - можно передать локальный путь проекта;
+// - можно передать путь до временного файла перед последующей загрузкой в облако.
 ```
 
 ## Очистка данных после бэкапа
@@ -57,7 +63,7 @@ $cleaner->deleteUserData(
 ```php
 use App\Services\FileStorageService;
 
-$data = FileStorageService::decryptFile('resources/backup_actives/42/2024-01-01/12-00-00.json.enc');
+$data = FileStorageService::decryptFile('/tmp/backup_42.json.enc');
 ```
 
 ## Конфигурация
