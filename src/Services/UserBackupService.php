@@ -8,6 +8,7 @@ use App\Contracts\BackupProcessorInterface;
 use App\Contracts\DatabaseServiceInterface;
 use App\Contracts\FileStorageServiceInterface;
 use App\Contracts\UserBackupServiceInterface;
+use App\ValueObjects\UserDataScope;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -15,10 +16,7 @@ use Illuminate\Support\Facades\DB;
  */
 class UserBackupService implements UserBackupServiceInterface
 {
-    protected int $userId;
-    protected array $accountIds;
-    protected array $activeIds;
-    protected array $ignoredTables;
+    protected UserDataScope $scope;
 
     protected DatabaseServiceInterface $databaseService;
     protected BackupProcessorInterface $backupProcessor;
@@ -47,10 +45,7 @@ class UserBackupService implements UserBackupServiceInterface
         array $activeIds = [],
         array $ignoredTables = []
     ) {
-        $this->userId = $userId;
-        $this->accountIds = $accountIds;
-        $this->activeIds = $activeIds;
-        $this->ignoredTables = $ignoredTables;
+        $this->scope = new UserDataScope($userId, $accountIds, $activeIds, $ignoredTables);
         $this->databaseService = $databaseService;
         $this->backupProcessor = $backupProcessor;
         $this->fileStorageService = $fileStorageService;
@@ -100,7 +95,7 @@ class UserBackupService implements UserBackupServiceInterface
             $tables = $this->getTables($connectionName);
 
             foreach ($tables as $table) {
-                if (in_array($table, $this->ignoredTables, true)) {
+                if ($this->scope->isIgnoredTable($table)) {
                     continue;
                 }
 
@@ -108,15 +103,9 @@ class UserBackupService implements UserBackupServiceInterface
                     continue;
                 }
 
-                $params = $table === 'users'
-                    ? ['id' => [$this->userId]]
-                    : [
-                        'user_id' => [$this->userId],
-                        'account_id' => $this->accountIds,
-                        'active_id' => $this->activeIds,
-                    ];
+                $params = $this->scope->backupParametersForTable($table);
 
-                $stream = $this->databaseService->streamUserData($table, $params, $connectionName);
+                $stream = $this->databaseService->streamUserData($table, $params->toArray(), $connectionName);
 
                 $this->backupProcessor->appendUserData($table, $stream);
             }

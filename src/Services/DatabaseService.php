@@ -6,6 +6,8 @@ namespace App\Services;
 
 use App\Contracts\DatabaseServiceInterface;
 use App\Services\Concerns\TableFiltering;
+use App\ValueObjects\ConnectionNames;
+use App\ValueObjects\TableQueryParameters;
 use Generator;
 use Illuminate\Support\Facades\DB;
 
@@ -16,14 +18,14 @@ class DatabaseService implements DatabaseServiceInterface
 {
     use TableFiltering;
 
-    protected array $connections;
+    protected ConnectionNames $connections;
 
     /**
      * @param array<int, string> $connections Список имён подключений, зарегистрированных в config/database.php.
      */
     public function __construct(array $connections)
     {
-        $this->connections = $connections;
+        $this->connections = new ConnectionNames($connections);
     }
 
     /**
@@ -31,10 +33,11 @@ class DatabaseService implements DatabaseServiceInterface
      */
     public function fetchUserDataFromAllDatabases(string $table, array $params): array
     {
+        $filters = TableQueryParameters::fromArray($params);
         $allData = [];
 
-        foreach ($this->connections as $connectionName) {
-            $data = $this->fetchUserData($table, $params, $connectionName);
+        foreach ($this->connections->toArray() as $connectionName) {
+            $data = $this->fetchUserData($table, $filters->toArray(), $connectionName);
             $allData[] = $data;
         }
 
@@ -58,6 +61,7 @@ class DatabaseService implements DatabaseServiceInterface
         string $connectionName,
         int $chunkSize = 1000
     ): Generator {
+        $filters = TableQueryParameters::fromArray($params);
         $schema = DB::connection($connectionName)->getSchemaBuilder();
 
         if (!$schema->hasTable($table)) {
@@ -71,7 +75,7 @@ class DatabaseService implements DatabaseServiceInterface
             return;
         }
 
-        $filterValues = $params[$field] ?? $params['account_id'] ?? [];
+        $filterValues = $filters->valuesForWithFallback($field, 'account_id')->toArray();
 
         if (empty($filterValues)) {
             return;
@@ -103,6 +107,6 @@ class DatabaseService implements DatabaseServiceInterface
 
     public function getConnections(): array
     {
-        return $this->connections;
+        return $this->connections->toArray();
     }
 }

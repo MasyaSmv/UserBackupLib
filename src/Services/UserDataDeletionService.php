@@ -7,6 +7,8 @@ namespace App\Services;
 use App\Contracts\DatabaseServiceInterface;
 use App\Contracts\UserDataDeletionServiceInterface;
 use App\Services\Concerns\TableFiltering;
+use App\ValueObjects\FilterValues;
+use App\ValueObjects\UserDataScope;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -35,11 +37,13 @@ class UserDataDeletionService implements UserDataDeletionServiceInterface
         array $activeIds = [],
         array $ignoredTables = []
     ): void {
+        $scope = new UserDataScope($userId, $accountIds, $activeIds, $ignoredTables);
+
         foreach ($this->databaseService->getConnections() as $connectionName) {
             $tables = $this->getTables($connectionName);
 
             foreach ($tables as $table) {
-                if (in_array($table, $ignoredTables, true)) {
+                if ($scope->isIgnoredTable($table)) {
                     continue;
                 }
 
@@ -54,54 +58,24 @@ class UserDataDeletionService implements UserDataDeletionServiceInterface
                     continue;
                 }
 
-                $params = $this->buildParams($table, $field, $userId, $accountIds, $activeIds);
+                $params = $this->buildParams($scope, $table, $field);
 
-                if (empty($params)) {
+                if ($params->isEmpty()) {
                     continue;
                 }
 
-                $prepared = $this->prepareParams($field, $columns, $params);
+                $prepared = $this->prepareParams($field, $columns, $params->toArray());
                 $this->deleteRows($connectionName, $table, $field, $prepared);
             }
         }
     }
 
     private function buildParams(
+        UserDataScope $scope,
         string $table,
         string $field,
-        int $userId,
-        array $accountIds,
-        array $activeIds
-    ): array {
-        // users.id = userId
-        if ($table === 'users' && $field === 'id') {
-            return [$userId];
-        }
-
-        // user_subaccounts.id = subaccountIds
-        if ($table === 'user_subaccounts' && $field === 'id') {
-            return $accountIds;
-        }
-
-        // Универсальные поля
-        if ($field === 'user_id') {
-            return [$userId];
-        }
-
-        if (in_array($field, ['account_id', 'from_account_id', 'to_account_id', 'subaccount_id'], true)) {
-            return $accountIds;
-        }
-
-        if ($field === 'active_id') {
-            return $activeIds;
-        }
-
-        /**
-         * Ключевой момент:
-         * если фильтр = id, но мы не знаем, какие id подставлять — лучше НЕ удалять,
-         * чем удалить не то (или, как сейчас, удалить одну “случайную” запись).
-         */
-        return [];
+    ): FilterValues {
+        return $scope->deletionValuesFor($table, $field);
     }
 
 

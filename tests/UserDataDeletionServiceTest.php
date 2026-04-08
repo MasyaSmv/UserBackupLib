@@ -6,6 +6,7 @@ namespace Tests;
 
 use App\Contracts\DatabaseServiceInterface;
 use App\Services\UserDataDeletionService;
+use App\ValueObjects\UserDataScope;
 use Illuminate\Database\Connection;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Database\Schema\Builder as SchemaBuilder;
@@ -296,15 +297,15 @@ class UserDataDeletionServiceTest extends TestCase
         $this->assertTrue(true);
     }
 
-    public function test_build_params_returns_empty_array_for_unknown_id_mapping(): void
+    public function test_build_params_returns_empty_values_for_unknown_id_mapping(): void
     {
         $service = new UserDataDeletionService(Mockery::mock(DatabaseServiceInterface::class));
 
         $method = new \ReflectionMethod($service, 'buildParams');
         $method->setAccessible(true);
 
-        $result = $method->invoke($service, 'some_table', 'id', 1, [1001], [501]);
+        $result = $method->invoke($service, new UserDataScope(1, [1001], [501]), 'some_table', 'id');
 
-        $this->assertSame([], $result);
+        $this->assertTrue($result->isEmpty());
     }
 }
