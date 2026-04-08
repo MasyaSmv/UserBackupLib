@@ -8,6 +8,7 @@ use App\Contracts\BackupProcessorInterface;
 use App\Contracts\DatabaseServiceInterface;
 use App\Contracts\FileStorageServiceInterface;
 use App\Contracts\UserBackupServiceInterface;
+use App\Services\UserBackupServiceFactory;
 use App\ValueObjects\UserDataScope;
 use Illuminate\Support\Facades\DB;
 
@@ -69,19 +70,16 @@ class UserBackupService implements UserBackupServiceInterface
         array $ignoredTables = [],
         array $connections = []
     ): self {
-        $databaseService = new DatabaseService($connections);
-        $backupProcessor = new BackupProcessor();
-        $fileStorageService = new FileStorageService();
-
-        return new self(
-            $userId,
-            $databaseService,
-            $backupProcessor,
-            $fileStorageService,
-            $accountIds,
-            $activeIds,
-            $ignoredTables,
+        $factory = new UserBackupServiceFactory(
+            new DatabaseService($connections),
+            new BackupProcessor(),
+            new FileStorageService(),
         );
+
+        /** @var self $service */
+        $service = $factory->makeForUser($userId, $accountIds, $activeIds, $ignoredTables);
+
+        return $service;
     }
 
     /**
