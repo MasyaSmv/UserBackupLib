@@ -1,12 +1,12 @@
 <?php
 
-namespace App\Exceptions;
+declare(strict_types=1);
 
-use Exception;
+namespace App\Exceptions;
 
 /**
  * Исключение, возникающее, когда данные пользователя не найдены.
  */
-class UserDataNotFoundException extends Exception
+class UserDataNotFoundException extends BackupException
 {
 }

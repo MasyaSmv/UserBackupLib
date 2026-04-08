@@ -1,12 +1,14 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Exceptions;
 
-use Exception;
+use RuntimeException;
 
 /**
  * Базовый класс для исключений, связанных с бэкапом.
  */
-class BackupException extends Exception
+class BackupException extends RuntimeException
 {
 }
