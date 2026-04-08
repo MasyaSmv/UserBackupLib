@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests;
 
+use App\Exceptions\BackupDecryptionException;
 use App\Services\Internal\BackupChunkReader;
 use RuntimeException;
 
@@ -64,6 +65,19 @@ class BackupChunkReaderTest extends TestCase
         $this->expectExceptionMessage('Encrypted file not found');
 
         iterator_to_array($reader->iterateDecryptedChunks($this->makePath('missing.json')), false);
+    }
+
+    public function test_it_wraps_decryption_failures_with_package_exception(): void
+    {
+        $path = $this->makePath('broken.json.enc');
+        $this->writeFile($path, 'not-a-valid-payload' . PHP_EOL);
+
+        $reader = new BackupChunkReader();
+
+        $this->expectException(BackupDecryptionException::class);
+        $this->expectExceptionMessage('Failed to decrypt backup chunk');
+
+        iterator_to_array($reader->iterateDecryptedChunks($path), false);
     }
 
     private function makePath(string $filename): string

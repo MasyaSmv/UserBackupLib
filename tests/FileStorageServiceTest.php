@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace Tests;
 
+use App\Exceptions\BackupEncryptionException;
 use App\Exceptions\BackupFormatException;
+use App\Exceptions\BackupSerializationException;
 use App\Exceptions\FileStorageException;
 use App\Services\FileStorageService;
+use Illuminate\Support\Facades\Crypt;
 use RuntimeException;
 
 class FileStorageServiceTest extends TestCase
@@ -317,7 +320,7 @@ class FileStorageServiceTest extends TestCase
         $storage = new FileStorageService();
         $path = $this->makePath('nan.json');
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(BackupSerializationException::class);
         $this->expectExceptionMessage('Failed to encode backup row to JSON');
 
         $storage->saveToFile($path, ['users' => [[NAN]]], false);
@@ -433,6 +436,32 @@ class FileStorageServiceTest extends TestCase
 
         $this->assertSame($path . '.enc', $result);
         $this->assertArrayHasKey($path . '.enc', $adapter->written);
+    }
+
+    public function test_encrypt_chunk_wraps_encryption_failures_with_package_exception(): void
+    {
+        $storage = new class extends FileStorageService {
+            public function encrypt(string $chunk, string $encryptedPath): string
+            {
+                return $this->encryptChunk($chunk, $encryptedPath);
+            }
+        };
+
+        Crypt::shouldReceive('encryptString')
+            ->once()
+            ->with('payload')
+            ->andThrow(new RuntimeException('low-level encryption failure'));
+
+        $this->expectException(BackupEncryptionException::class);
+        $this->expectExceptionMessage('Failed to encrypt backup chunk');
+
+        try {
+            $storage->encrypt('payload', $this->makePath('encryption-failure.json.enc'));
+        } catch (BackupEncryptionException $exception) {
+            $this->assertInstanceOf(RuntimeException::class, $exception->getPrevious());
+
+            throw $exception;
+        }
     }
 
     public function test_save_to_file_retries_unique_temp_path_when_first_candidate_exists(): void

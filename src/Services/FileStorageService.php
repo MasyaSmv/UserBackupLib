@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Contracts\FileStorageServiceInterface;
+use App\Exceptions\BackupEncryptionException;
+use App\Exceptions\BackupSerializationException;
 use App\Exceptions\FileStorageException;
 use App\Services\Internal\BackupChunkReader;
 use App\Services\Internal\BackupStreamEntry;
@@ -12,6 +14,7 @@ use App\Services\Internal\FileSystemAdapter;
 use App\Services\Internal\BackupJsonStreamParser;
 use Generator;
 use Illuminate\Support\Facades\Crypt;
+use Throwable;
 
 /**
  * Потоковая запись/чтение бэкапов с опциональным шифрованием чанками.
@@ -106,7 +109,7 @@ class FileStorageService implements FileStorageServiceInterface
 
                 $encodedRow = json_encode($row, JSON_UNESCAPED_UNICODE);
                 if ($encodedRow === false) {
-                    throw new FileStorageException('Failed to encode backup row to JSON: ' . json_last_error_msg());
+                    throw new BackupSerializationException('Failed to encode backup row to JSON: ' . json_last_error_msg());
                 }
 
                 $this->writeChunk($handle, $encodedRow);
@@ -187,7 +190,7 @@ class FileStorageService implements FileStorageServiceInterface
                     break;
                 }
 
-                $encryptedChunk = Crypt::encryptString($chunk);
+                $encryptedChunk = $this->encryptChunk($chunk, $encryptedPath);
                 $this->writeChunk($writeHandle, $encryptedChunk . PHP_EOL);
             }
         } finally {
@@ -205,6 +208,18 @@ class FileStorageService implements FileStorageServiceInterface
     protected function createParser(): BackupJsonStreamParser
     {
         return new BackupJsonStreamParser();
+    }
+
+    protected function encryptChunk(string $chunk, string $encryptedPath): string
+    {
+        try {
+            return Crypt::encryptString($chunk);
+        } catch (Throwable $exception) {
+            throw new BackupEncryptionException(
+                sprintf('Failed to encrypt backup chunk for "%s"', $encryptedPath),
+                previous: $exception,
+            );
+        }
     }
 
     protected function createTempSuffix(): string

@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Services\Internal;
 
+use App\Exceptions\BackupDecryptionException;
 use App\Exceptions\FileStorageException;
 use Generator;
 use Illuminate\Support\Facades\Crypt;
+use Throwable;
 
 class BackupChunkReader
 {
@@ -53,7 +55,14 @@ class BackupChunkReader
                     continue;
                 }
 
-                yield Crypt::decryptString($line);
+                try {
+                    yield Crypt::decryptString($line);
+                } catch (Throwable $exception) {
+                    throw new BackupDecryptionException(
+                        sprintf('Failed to decrypt backup chunk from "%s"', $filePath),
+                        previous: $exception,
+                    );
+                }
             }
         } finally {
             $fileSystem->close($handle);
