@@ -21,9 +21,12 @@ use Illuminate\Database\Schema\Blueprint;
  */
 class UserBackupServiceTest extends TestCase
 {
+    private string $backupDir;
+
     protected function setUp(): void
     {
         parent::setUp();
+        $this->backupDir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'user-backup-lib-tests';
 
         Schema::connection('testing')->dropIfExists('positions');
         Schema::connection('testing')->dropIfExists('transactions');
@@ -71,7 +74,7 @@ class UserBackupServiceTest extends TestCase
         );
 
         $service->fetchAllUserData();
-        $path = $service->saveBackupToFile(false);
+        $path = $service->saveBackupToFile($this->makeBackupPath(), false);
 
         $this->assertFileExists($path);
 
@@ -104,7 +107,7 @@ class UserBackupServiceTest extends TestCase
         );
 
         $service->fetchAllUserData();
-        $path = $service->saveBackupToFile(true);
+        $path = $service->saveBackupToFile($this->makeBackupPath(), true);
 
         $this->assertFileExists($path);
         $this->assertSame('enc', pathinfo($path, PATHINFO_EXTENSION));
@@ -155,7 +158,7 @@ class UserBackupServiceTest extends TestCase
 
     private function cleanupBackups(): void
     {
-        $baseDir = base_path('resources/backup_actives');
+        $baseDir = $this->backupDir;
 
         if (!is_dir($baseDir)) {
             return;
@@ -175,5 +178,10 @@ class UserBackupServiceTest extends TestCase
         }
 
         rmdir($baseDir);
+    }
+
+    private function makeBackupPath(): string
+    {
+        return $this->backupDir . DIRECTORY_SEPARATOR . 'backup.json';
     }
 }

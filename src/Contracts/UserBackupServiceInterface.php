@@ -17,11 +17,12 @@ interface UserBackupServiceInterface
     public function fetchAllUserData(): array;
 
     /**
-     * Сохраняет ранее собранный бэкап в файл.
+     * Сохраняет ранее собранный бэкап в указанный файл.
      *
+     * @param string $filePath Путь, куда нужно сохранить бэкап.
      * @param bool $encrypt Включить шифрование файла.
      *
-     * @return string Путь к файлу.
+     * @return string Путь к итоговому файлу.
      */
-    public function saveBackupToFile(bool $encrypt = true): string;
+    public function saveBackupToFile(string $filePath, bool $encrypt = true): string;
 }
