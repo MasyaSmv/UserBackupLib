@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Contracts\FileStorageServiceInterface;
+use Generator;
 use Illuminate\Support\Facades\Crypt;
 use RuntimeException;
 
@@ -27,51 +28,13 @@ class FileStorageService implements FileStorageServiceInterface
      */
     public static function decryptFile(string $encryptedFilePath): array
     {
-        if (!file_exists($encryptedFilePath)) {
-            throw new RuntimeException("Encrypted file not found: $encryptedFilePath");
+        $data = [];
+
+        foreach ((new self())->streamBackupData($encryptedFilePath) as $entry) {
+            $data[$entry['table']][] = $entry['row'];
         }
 
-        $rawContent = file_get_contents($encryptedFilePath);
-
-        if ($rawContent === false) {
-            throw new RuntimeException("Failed to read file: $encryptedFilePath");
-        }
-
-        if (pathinfo($encryptedFilePath, PATHINFO_EXTENSION) === 'enc') {
-            if (!str_contains($rawContent, "\n") && !str_contains($rawContent, "\r")) {
-                $jsonData = Crypt::decryptString($rawContent);
-            } else {
-                $lines = preg_split('/\r\n|\n|\r/', trim($rawContent));
-                $jsonBuffer = '';
-
-                foreach ($lines as $line) {
-                    $line = trim($line);
-                    if ($line === '') {
-                        continue;
-                    }
-
-                    $jsonBuffer .= Crypt::decryptString($line);
-                }
-
-                $jsonData = $jsonBuffer;
-            }
-        } else {
-            $jsonData = $rawContent;
-        }
-
-        $decoded = json_decode($jsonData, true);
-
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new RuntimeException(
-                sprintf(
-                    'Failed to decode JSON from backup file "%s": %s',
-                    $encryptedFilePath,
-                    json_last_error_msg(),
-                ),
-            );
-        }
-
-        return $decoded;
+        return $data;
     }
 
     public function saveToFile(string $filePath, iterable $data, bool $encrypt = true): string
@@ -103,6 +66,160 @@ class FileStorageService implements FileStorageServiceInterface
 
         return $filePath;
     }
+
+    public function streamBackupData(string $filePath): Generator
+    {
+        $buffer = '';
+        $state = 'start_object';
+        $currentTable = null;
+
+        foreach (self::iterateDecryptedChunks($filePath) as $chunk) {
+            $buffer .= $chunk;
+
+            while (true) {
+                $this->skipWhitespace($buffer);
+
+                switch ($state) {
+                    case 'start_object':
+                        if ($buffer === '') {
+                            break 2;
+                        }
+
+                        if ($buffer[0] !== '{') {
+                            throw new RuntimeException(sprintf('Invalid backup format in "%s": expected object start', $filePath));
+                        }
+
+                        $buffer = substr($buffer, 1);
+                        $state = 'table_or_end';
+                        break;
+
+                    case 'table_or_end':
+                        if ($buffer === '') {
+                            break 2;
+                        }
+
+                        if ($buffer[0] === '}') {
+                            $buffer = substr($buffer, 1);
+                            $state = 'done';
+                            break 3;
+                        }
+
+                        $currentTable = $this->consumeJsonString($buffer, $filePath);
+                        if ($currentTable === null) {
+                            break 2;
+                        }
+
+                        $state = 'table_separator';
+                        break;
+
+                    case 'table_separator':
+                        if ($buffer === '') {
+                            break 2;
+                        }
+
+                        if ($buffer[0] !== ':') {
+                            throw new RuntimeException(sprintf('Invalid backup format in "%s": expected ":" after table name', $filePath));
+                        }
+
+                        $buffer = substr($buffer, 1);
+                        $state = 'array_start';
+                        break;
+
+                    case 'array_start':
+                        if ($buffer === '') {
+                            break 2;
+                        }
+
+                        if ($buffer[0] !== '[') {
+                            throw new RuntimeException(sprintf('Invalid backup format in "%s": expected "[" after table name', $filePath));
+                        }
+
+                        $buffer = substr($buffer, 1);
+                        $state = 'row_or_array_end';
+                        break;
+
+                    case 'row_or_array_end':
+                        if ($buffer === '') {
+                            break 2;
+                        }
+
+                        if ($buffer[0] === ']') {
+                            $buffer = substr($buffer, 1);
+                            $currentTable = null;
+                            $state = 'table_delimiter_or_end';
+                            break;
+                        }
+
+                        $row = $this->consumeJsonValue($buffer, $filePath);
+                        if ($row === self::INCOMPLETE_JSON_VALUE) {
+                            break 2;
+                        }
+
+                        /** @var string $currentTable */
+                        yield [
+                            'table' => $currentTable,
+                            'row' => $row,
+                        ];
+
+                        $state = 'row_delimiter_or_array_end';
+                        break;
+
+                    case 'row_delimiter_or_array_end':
+                        if ($buffer === '') {
+                            break 2;
+                        }
+
+                        if ($buffer[0] === ',') {
+                            $buffer = substr($buffer, 1);
+                            $state = 'row_or_array_end';
+                            break;
+                        }
+
+                        if ($buffer[0] === ']') {
+                            $buffer = substr($buffer, 1);
+                            $currentTable = null;
+                            $state = 'table_delimiter_or_end';
+                            break;
+                        }
+
+                        throw new RuntimeException(sprintf('Invalid backup format in "%s": expected "," or "]" after row', $filePath));
+
+                    case 'table_delimiter_or_end':
+                        if ($buffer === '') {
+                            break 2;
+                        }
+
+                        if ($buffer[0] === ',') {
+                            $buffer = substr($buffer, 1);
+                            $state = 'table_or_end';
+                            break;
+                        }
+
+                        if ($buffer[0] === '}') {
+                            $buffer = substr($buffer, 1);
+                            $state = 'done';
+                            break 3;
+                        }
+
+                        throw new RuntimeException(sprintf('Invalid backup format in "%s": expected "," or "}" after table payload', $filePath));
+
+                    case 'done':
+                        break 3;
+
+                    default:
+                        throw new RuntimeException(sprintf('Unknown parser state "%s"', $state));
+                }
+            }
+        }
+
+        $this->skipWhitespace($buffer);
+
+        if ($state !== 'done' || $buffer !== '') {
+            throw new RuntimeException(sprintf('Unexpected end of backup stream in "%s"', $filePath));
+        }
+    }
+
+    private const INCOMPLETE_JSON_VALUE = '__INCOMPLETE_JSON_VALUE__';
 
     /**
      * @param resource $handle
@@ -236,5 +353,201 @@ class FileStorageService implements FileStorageServiceInterface
             fclose($writeHandle);
             unlink($tempPath);
         }
+    }
+
+    private static function iterateDecryptedChunks(string $filePath, int $chunkSize = 1048576): Generator
+    {
+        if (!file_exists($filePath)) {
+            throw new RuntimeException("Encrypted file not found: $filePath");
+        }
+
+        if (pathinfo($filePath, PATHINFO_EXTENSION) !== 'enc') {
+            $handle = fopen($filePath, 'rb');
+
+            if (!$handle) {
+                throw new RuntimeException("Failed to open file: $filePath");
+            }
+
+            try {
+                while (!feof($handle)) {
+                    $chunk = fread($handle, $chunkSize);
+
+                    if ($chunk === false) {
+                        throw new RuntimeException("Failed to read file: $filePath");
+                    }
+
+                    if ($chunk === '') {
+                        continue;
+                    }
+
+                    yield $chunk;
+                }
+            } finally {
+                fclose($handle);
+            }
+
+            return;
+        }
+
+        $handle = fopen($filePath, 'rb');
+
+        if (!$handle) {
+            throw new RuntimeException("Failed to open encrypted file: $filePath");
+        }
+
+        try {
+            while (($line = fgets($handle)) !== false) {
+                $line = trim($line);
+
+                if ($line === '') {
+                    continue;
+                }
+
+                yield Crypt::decryptString($line);
+            }
+
+            if (!feof($handle)) {
+                throw new RuntimeException("Failed to read encrypted file: $filePath");
+            }
+        } finally {
+            fclose($handle);
+        }
+    }
+
+    private function skipWhitespace(string &$buffer): void
+    {
+        $buffer = ltrim($buffer);
+    }
+
+    private function consumeJsonString(string &$buffer, string $filePath): ?string
+    {
+        if ($buffer === '') {
+            return null;
+        }
+
+        if ($buffer[0] !== '"') {
+            throw new RuntimeException(sprintf('Invalid backup format in "%s": expected JSON string', $filePath));
+        }
+
+        $escaped = false;
+        $length = strlen($buffer);
+
+        for ($i = 1; $i < $length; $i++) {
+            $char = $buffer[$i];
+
+            if ($escaped) {
+                $escaped = false;
+                continue;
+            }
+
+            if ($char === '\\') {
+                $escaped = true;
+                continue;
+            }
+
+            if ($char === '"') {
+                $token = substr($buffer, 0, $i + 1);
+                $decoded = json_decode($token, true);
+
+                if (json_last_error() !== JSON_ERROR_NONE || !is_string($decoded)) {
+                    throw new RuntimeException(
+                        sprintf('Failed to decode JSON string from backup "%s": %s', $filePath, json_last_error_msg()),
+                    );
+                }
+
+                $buffer = substr($buffer, $i + 1);
+
+                return $decoded;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return mixed
+     */
+    private function consumeJsonValue(string &$buffer, string $filePath)
+    {
+        $inString = false;
+        $escaped = false;
+        $objectDepth = 0;
+        $arrayDepth = 0;
+        $length = strlen($buffer);
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $buffer[$i];
+
+            if ($inString) {
+                if ($escaped) {
+                    $escaped = false;
+                    continue;
+                }
+
+                if ($char === '\\') {
+                    $escaped = true;
+                    continue;
+                }
+
+                if ($char === '"') {
+                    $inString = false;
+                }
+
+                continue;
+            }
+
+            if ($char === '"') {
+                $inString = true;
+                continue;
+            }
+
+            if ($char === '{') {
+                $objectDepth++;
+                continue;
+            }
+
+            if ($char === '}') {
+                $objectDepth--;
+                continue;
+            }
+
+            if ($char === '[') {
+                $arrayDepth++;
+                continue;
+            }
+
+            if ($char === ']') {
+                if ($objectDepth === 0 && $arrayDepth === 0) {
+                    return $this->decodeJsonToken(substr($buffer, 0, $i), $filePath, $buffer, $i);
+                }
+
+                $arrayDepth--;
+                continue;
+            }
+
+            if ($char === ',' && $objectDepth === 0 && $arrayDepth === 0) {
+                return $this->decodeJsonToken(substr($buffer, 0, $i), $filePath, $buffer, $i);
+            }
+        }
+
+        return self::INCOMPLETE_JSON_VALUE;
+    }
+
+    /**
+     * @return mixed
+     */
+    private function decodeJsonToken(string $token, string $filePath, string &$buffer, int $offset)
+    {
+        $decoded = json_decode($token, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new RuntimeException(
+                sprintf('Failed to decode JSON token from backup "%s": %s', $filePath, json_last_error_msg()),
+            );
+        }
+
+        $buffer = substr($buffer, $offset);
+
+        return $decoded;
     }
 }

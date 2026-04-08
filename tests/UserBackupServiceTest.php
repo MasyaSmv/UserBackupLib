@@ -118,6 +118,81 @@ class UserBackupServiceTest extends TestCase
         $this->assertSame('Alice', $data['users'][0]['name']);
     }
 
+    /**
+     * @allure.title("Потоковое чтение незашифрованного бэкапа")
+     * @allure.description("Проверяем, что backup-файл можно читать последовательно без полной материализации JSON.")
+     * @allure.severity(critical)
+     * @allure.story("Чтение бэкапа")
+     */
+    public function test_it_streams_plain_backup_data(): void
+    {
+        $service = $this->makeBackupService(
+            userId: 1,
+            accountIds: [1001],
+            activeIds: [501],
+        );
+
+        $service->fetchAllUserData();
+        $path = $service->saveBackupToFile($this->makeBackupPath(), false);
+
+        $entries = iterator_to_array((new FileStorageService())->streamBackupData($path), false);
+
+        $this->assertCount(4, $entries);
+        $this->assertSame('users', $entries[0]['table']);
+        $this->assertSame('Alice', $entries[0]['row']['name']);
+        $this->assertSame('transactions', $entries[1]['table']);
+        $this->assertSame('positions', $entries[3]['table']);
+    }
+
+    /**
+     * @allure.title("Потоковое чтение зашифрованного бэкапа")
+     * @allure.description("Проверяем, что зашифрованный backup читается построчно и отдает строки последовательно.")
+     * @allure.severity(critical)
+     * @allure.story("Чтение бэкапа")
+     */
+    public function test_it_streams_encrypted_backup_data(): void
+    {
+        $service = $this->makeBackupService(
+            userId: 1,
+            accountIds: [1001],
+            activeIds: [501],
+        );
+
+        $service->fetchAllUserData();
+        $path = $service->saveBackupToFile($this->makeBackupPath(), true);
+
+        $entries = iterator_to_array((new FileStorageService())->streamBackupData($path), false);
+
+        $this->assertCount(4, $entries);
+        $this->assertSame('users', $entries[0]['table']);
+        $this->assertSame('Alice', $entries[0]['row']['name']);
+        $this->assertSame('positions', $entries[3]['table']);
+        $this->assertSame('AAPL', $entries[3]['row']['symbol']);
+    }
+
+    /**
+     * @allure.title("Потоковое чтение учитывает пустые таблицы")
+     * @allure.description("Пустой массив таблицы не должен ломать parser и не должен отдавать фиктивные строки.")
+     * @allure.severity(normal)
+     * @allure.story("Чтение бэкапа")
+     */
+    public function test_it_handles_empty_tables_in_stream_reader(): void
+    {
+        $storage = new FileStorageService();
+        $path = base_path('resources/backup_actives/test-empty/empty.json');
+
+        $storage->saveToFile($path, [
+            'users' => [[['id' => 1, 'name' => 'Alice']]],
+            'transactions' => [[]],
+        ], false);
+
+        $entries = iterator_to_array($storage->streamBackupData($path), false);
+
+        $this->assertCount(1, $entries);
+        $this->assertSame('users', $entries[0]['table']);
+        $this->assertSame('Alice', $entries[0]['row']['name']);
+    }
+
     private function makeBackupService(int $userId, array $accountIds, array $activeIds): UserBackupService
     {
         $databaseService = new DatabaseService(['testing']);
