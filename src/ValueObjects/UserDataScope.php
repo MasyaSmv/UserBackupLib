@@ -8,7 +8,11 @@ final class UserDataScope
 {
     private int $userId;
 
-    private FilterValues $accountIds;
+    /**
+     * В текущей интеграции пакет получает ids субсчетов.
+     * Название accountIds оставлено в публичном API для обратной совместимости.
+     */
+    private FilterValues $subaccountIds;
 
     private FilterValues $activeIds;
 
@@ -18,7 +22,7 @@ final class UserDataScope
     private array $ignoredTables;
 
     /**
-     * @param array<int, int|string> $accountIds
+     * @param array<int, int|string> $accountIds Legacy-название параметра. По факту ожидаются ids субсчетов.
      * @param array<int, int|string> $activeIds
      * @param array<int, string> $ignoredTables
      */
@@ -29,7 +33,7 @@ final class UserDataScope
         array $ignoredTables = []
     ) {
         $this->userId = $userId;
-        $this->accountIds = new FilterValues($accountIds);
+        $this->subaccountIds = new FilterValues($accountIds);
         $this->activeIds = new FilterValues($activeIds);
         $this->ignoredTables = array_values(array_unique(array_map('strval', $ignoredTables)));
     }
@@ -41,7 +45,12 @@ final class UserDataScope
 
     public function accountIds(): FilterValues
     {
-        return $this->accountIds;
+        return $this->subaccountIds;
+    }
+
+    public function subaccountIds(): FilterValues
+    {
+        return $this->subaccountIds;
     }
 
     public function activeIds(): FilterValues
@@ -72,7 +81,7 @@ final class UserDataScope
 
         return new TableQueryParameters([
             'user_id' => FilterValues::single($this->userId),
-            'account_id' => $this->accountIds,
+            'account_id' => $this->subaccountIds,
             'active_id' => $this->activeIds,
         ]);
     }
@@ -84,7 +93,7 @@ final class UserDataScope
         }
 
         if ($table === 'user_subaccounts' && $field === 'id') {
-            return $this->accountIds;
+            return $this->subaccountIds;
         }
 
         if ($field === 'user_id') {
@@ -92,7 +101,7 @@ final class UserDataScope
         }
 
         if (in_array($field, ['account_id', 'from_account_id', 'to_account_id', 'subaccount_id'], true)) {
-            return $this->accountIds;
+            return $this->subaccountIds;
         }
 
         if ($field === 'active_id') {

@@ -27,7 +27,7 @@ final class UserBackupServiceFactory implements UserBackupServiceFactoryInterfac
             $this->databaseService,
             $this->backupProcessor,
             $this->fileStorageService,
-            $scope->accountIds()->toArray(),
+            $scope->subaccountIds()->toArray(),
             $scope->activeIds()->toArray(),
             $scope->ignoredTables(),
         );

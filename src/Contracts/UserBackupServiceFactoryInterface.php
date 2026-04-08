@@ -11,7 +11,7 @@ interface UserBackupServiceFactoryInterface
     public function make(UserDataScope $scope): UserBackupServiceInterface;
 
     /**
-     * @param array<int, int|string> $accountIds
+     * @param array<int, int|string> $accountIds Legacy-название параметра. В текущей интеграции ожидаются ids субсчетов.
      * @param array<int, int|string> $activeIds
      * @param array<int, string> $ignoredTables
      */

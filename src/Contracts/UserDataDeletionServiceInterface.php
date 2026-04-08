@@ -13,7 +13,7 @@ interface UserDataDeletionServiceInterface
      * Удаляет записи пользователя из всех таблиц во всех подключениях.
      *
      * @param int   $userId        Идентификатор пользователя.
-     * @param array $accountIds    Идентификаторы счетов.
+     * @param array $accountIds    Legacy-название параметра. В текущей интеграции передаются идентификаторы субсчетов.
      * @param array $activeIds     Идентификаторы активов.
      * @param array $ignoredTables Таблицы, которые нужно пропустить.
      */

@@ -15,6 +15,7 @@ class UserDataScopeTest extends TestCase
 
         $this->assertSame(42, $scope->userId());
         $this->assertSame([1001], $scope->accountIds()->toArray());
+        $this->assertSame([1001], $scope->subaccountIds()->toArray());
         $this->assertSame([501], $scope->activeIds()->toArray());
         $this->assertSame(['users'], $scope->ignoredTables());
         $this->assertTrue($scope->isIgnoredTable('users'));

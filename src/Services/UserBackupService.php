@@ -33,7 +33,7 @@ class UserBackupService implements UserBackupServiceInterface
      * @param DatabaseServiceInterface        $databaseService
      * @param BackupProcessorInterface        $backupProcessor
      * @param FileStorageServiceInterface     $fileStorageService
-     * @param array<int, int|string>          $accountIds
+     * @param array<int, int|string>          $accountIds Legacy-название параметра. В текущей интеграции ожидаются ids субсчетов.
      * @param array<int, int|string>          $activeIds
      * @param array<int, string>              $ignoredTables
      */
@@ -56,7 +56,7 @@ class UserBackupService implements UserBackupServiceInterface
      * Упрощённый фабричный метод без DI-контейнера.
      *
      * @param int        $userId
-     * @param array      $accountIds
+     * @param array      $accountIds Legacy-название параметра. В текущей интеграции ожидаются ids субсчетов.
      * @param array      $activeIds
      * @param array      $ignoredTables
      * @param array      $connections
