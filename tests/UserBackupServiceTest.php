@@ -11,6 +11,7 @@ use App\Services\BackupProcessor;
 use App\Services\DatabaseService;
 use App\Services\FileStorageService;
 use App\Services\UserBackupService;
+use App\ValueObjects\UserBackupCreateOptions;
 use Generator;
 use Illuminate\Database\Connection;
 use Illuminate\Database\Schema\Builder;
@@ -296,6 +297,27 @@ class UserBackupServiceTest extends TestCase
         $storageProperty = $reflection->getProperty('fileStorageService');
         $storageProperty->setAccessible(true);
         $this->assertInstanceOf(FileStorageService::class, $storageProperty->getValue($service));
+    }
+
+    public function test_create_from_options_builds_default_service_graph(): void
+    {
+        $options = UserBackupCreateOptions::fromLegacy(
+            userId: 42,
+            accountIds: [1001],
+            activeIds: [501],
+            ignoredTables: ['logs'],
+            connections: ['mysql'],
+        );
+
+        $service = UserBackupService::createFromOptions($options);
+
+        $this->assertInstanceOf(UserBackupService::class, $service);
+
+        $reflection = new \ReflectionClass($service);
+
+        $databaseProperty = $reflection->getProperty('databaseService');
+        $databaseProperty->setAccessible(true);
+        $this->assertInstanceOf(DatabaseService::class, $databaseProperty->getValue($service));
     }
 
     public function test_fetch_all_user_data_reads_mysql_table_listing(): void

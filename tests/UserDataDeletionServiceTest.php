@@ -92,12 +92,12 @@ class UserDataDeletionServiceTest extends TestCase
 
         $deletionService = new UserDataDeletionService($databaseService);
 
-        $deletionService->deleteUserData(
+        $deletionService->deleteScope(new UserDataScope(
             userId: 1,
             accountIds: [1001],
             activeIds: [501],
             ignoredTables: [],
-        );
+        ));
 
         $this->assertTrue(true);
     }

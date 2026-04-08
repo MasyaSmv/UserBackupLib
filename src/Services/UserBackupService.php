@@ -9,6 +9,7 @@ use App\Contracts\DatabaseServiceInterface;
 use App\Contracts\FileStorageServiceInterface;
 use App\Contracts\UserBackupServiceInterface;
 use App\Services\UserBackupServiceFactory;
+use App\ValueObjects\UserBackupCreateOptions;
 use App\ValueObjects\UserDataScope;
 use Illuminate\Support\Facades\DB;
 
@@ -70,14 +71,21 @@ class UserBackupService implements UserBackupServiceInterface
         array $ignoredTables = [],
         array $connections = []
     ): self {
+        return self::createFromOptions(
+            UserBackupCreateOptions::fromLegacy($userId, $accountIds, $activeIds, $ignoredTables, $connections),
+        );
+    }
+
+    public static function createFromOptions(UserBackupCreateOptions $options): self
+    {
         $factory = new UserBackupServiceFactory(
-            new DatabaseService($connections),
+            new DatabaseService($options->connections()->toArray()),
             new BackupProcessor(),
             new FileStorageService(),
         );
 
         /** @var self $service */
-        $service = $factory->makeForUser($userId, $accountIds, $activeIds, $ignoredTables);
+        $service = $factory->make($options->scope());
 
         return $service;
     }

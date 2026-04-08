@@ -31,14 +31,8 @@ class UserDataDeletionService implements UserDataDeletionServiceInterface
     /**
      * {@inheritdoc}
      */
-    public function deleteUserData(
-        int $userId,
-        array $accountIds = [],
-        array $activeIds = [],
-        array $ignoredTables = []
-    ): void {
-        $scope = new UserDataScope($userId, $accountIds, $activeIds, $ignoredTables);
-
+    public function deleteScope(UserDataScope $scope): void
+    {
         foreach ($this->databaseService->getConnections() as $connectionName) {
             $tables = $this->getTables($connectionName);
 
@@ -68,6 +62,18 @@ class UserDataDeletionService implements UserDataDeletionServiceInterface
                 $this->deleteRows($connectionName, $table, $field, $prepared);
             }
         }
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function deleteUserData(
+        int $userId,
+        array $accountIds = [],
+        array $activeIds = [],
+        array $ignoredTables = []
+    ): void {
+        $this->deleteScope(new UserDataScope($userId, $accountIds, $activeIds, $ignoredTables));
     }
 
     private function buildParams(

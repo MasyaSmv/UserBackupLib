@@ -75,4 +75,17 @@ class UserBackupServiceProviderTest extends TestCase
 
         $this->assertInstanceOf(UserBackupServiceInterface::class, $service);
     }
+
+    public function test_it_creates_service_from_legacy_factory_arguments(): void
+    {
+        config()->set('database.connections', [
+            'mysql' => [],
+        ]);
+        config()->set('user-backup.connections', ['mysql']);
+
+        $factory = $this->app->make(UserBackupServiceFactoryInterface::class);
+        $service = $factory->makeForUser(42, [1001], [501], ['logs']);
+
+        $this->assertInstanceOf(UserBackupServiceInterface::class, $service);
+    }
 }

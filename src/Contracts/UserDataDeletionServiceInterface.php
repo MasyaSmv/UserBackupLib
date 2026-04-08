@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace App\Contracts;
 
+use App\ValueObjects\UserDataScope;
+
 /**
  * Контракт сервиса очистки пользовательских данных после бэкапа.
  */
 interface UserDataDeletionServiceInterface
 {
+    public function deleteScope(UserDataScope $scope): void;
+
     /**
      * Удаляет записи пользователя из всех таблиц во всех подключениях.
      *
