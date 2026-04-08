@@ -4,19 +4,25 @@ declare(strict_types=1);
 
 namespace Tests;
 
+use App\Contracts\BackupProcessorInterface;
+use App\Contracts\DatabaseServiceInterface;
+use App\Contracts\FileStorageServiceInterface;
 use App\Services\BackupProcessor;
 use App\Services\DatabaseService;
 use App\Services\FileStorageService;
 use App\Services\UserBackupService;
-use Illuminate\Support\Facades\Schema;
-use Illuminate\Database\Schema\Blueprint;
+use Generator;
+use Illuminate\Database\Connection;
+use Illuminate\Database\Schema\Builder;
+use Illuminate\Support\Facades\DB;
+use Mockery;
 
 /**
  * @allure.suite("UserBackup")
  * @allure.epic("UserBackupLib")
  * @allure.owner("backend")
  * @allure.lead("backend")
- * @allure.layer("integration")
+ * @allure.layer("unit")
  * @allure.tag("backup", "stream", "encryption")
  */
 class UserBackupServiceTest extends TestCase
@@ -27,58 +33,23 @@ class UserBackupServiceTest extends TestCase
     {
         parent::setUp();
         $this->backupDir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'user-backup-lib-tests';
-
-        Schema::connection('testing')->dropIfExists('positions');
-        Schema::connection('testing')->dropIfExists('transactions');
-        Schema::connection('testing')->dropIfExists('users');
-
-        Schema::connection('testing')->create('users', function (Blueprint $table) {
-            $table->id();
-            $table->string('name');
-        });
-
-        Schema::connection('testing')->create('transactions', function (Blueprint $table) {
-            $table->id();
-            $table->unsignedBigInteger('account_id');
-            $table->decimal('amount', 10, 2);
-        });
-
-        Schema::connection('testing')->create('positions', function (Blueprint $table) {
-            $table->id();
-            $table->unsignedBigInteger('user_id');
-            $table->unsignedBigInteger('active_id');
-            $table->string('symbol');
-        });
-
-        $this->seedData();
     }
 
     protected function tearDown(): void
     {
+        Mockery::close();
         $this->cleanupBackups();
         parent::tearDown();
     }
 
-    /**
-     * @allure.title("Стримовое сохранение бэкапа без шифрования")
-     * @allure.description("Проверяем, что данные выгружаются чанками и сохраняются в JSON без полной загрузки в память.")
-     * @allure.severity(critical)
-     * @allure.story("Бэкап данных пользователя")
-     */
     public function test_backup_streams_and_saves_without_encryption(): void
     {
-        $service = $this->makeBackupService(
-            userId: 1,
-            accountIds: [1001],
-            activeIds: [501],
-        );
-
-        $service->fetchAllUserData();
-        $path = $service->saveBackupToFile($this->makeBackupPath(), false);
+        $storage = new FileStorageService();
+        $path = $storage->saveToFile($this->makeBackupPath(), $this->makeBackupPayload(), false);
 
         $this->assertFileExists($path);
 
-        $payload = json_decode(file_get_contents($path), true);
+        $payload = json_decode((string) file_get_contents($path), true);
 
         $this->assertArrayHasKey('users', $payload);
         $this->assertCount(1, $payload['users']);
@@ -92,22 +63,10 @@ class UserBackupServiceTest extends TestCase
         $this->assertSame('AAPL', $payload['positions'][0]['symbol']);
     }
 
-    /**
-     * @allure.title("Стримовое сохранение бэкапа с шифрованием")
-     * @allure.description("Данные шифруются построчно, что позволяет обрабатывать большие объёмы без переполнения памяти.")
-     * @allure.severity(critical)
-     * @allure.story("Бэкап данных пользователя")
-     */
     public function test_backup_streams_and_encrypts(): void
     {
-        $service = $this->makeBackupService(
-            userId: 1,
-            accountIds: [1001],
-            activeIds: [501],
-        );
-
-        $service->fetchAllUserData();
-        $path = $service->saveBackupToFile($this->makeBackupPath(), true);
+        $storage = new FileStorageService();
+        $path = $storage->saveToFile($this->makeBackupPath(), $this->makeBackupPayload(), true);
 
         $this->assertFileExists($path);
         $this->assertSame('enc', pathinfo($path, PATHINFO_EXTENSION));
@@ -118,22 +77,10 @@ class UserBackupServiceTest extends TestCase
         $this->assertSame('Alice', $data['users'][0]['name']);
     }
 
-    /**
-     * @allure.title("Потоковое чтение незашифрованного бэкапа")
-     * @allure.description("Проверяем, что backup-файл можно читать последовательно без полной материализации JSON.")
-     * @allure.severity(critical)
-     * @allure.story("Чтение бэкапа")
-     */
     public function test_it_streams_plain_backup_data(): void
     {
-        $service = $this->makeBackupService(
-            userId: 1,
-            accountIds: [1001],
-            activeIds: [501],
-        );
-
-        $service->fetchAllUserData();
-        $path = $service->saveBackupToFile($this->makeBackupPath(), false);
+        $storage = new FileStorageService();
+        $path = $storage->saveToFile($this->makeBackupPath(), $this->makeBackupPayload(), false);
 
         $entries = iterator_to_array((new FileStorageService())->streamBackupData($path), false);
 
@@ -144,22 +91,10 @@ class UserBackupServiceTest extends TestCase
         $this->assertSame('positions', $entries[3]['table']);
     }
 
-    /**
-     * @allure.title("Потоковое чтение зашифрованного бэкапа")
-     * @allure.description("Проверяем, что зашифрованный backup читается построчно и отдает строки последовательно.")
-     * @allure.severity(critical)
-     * @allure.story("Чтение бэкапа")
-     */
     public function test_it_streams_encrypted_backup_data(): void
     {
-        $service = $this->makeBackupService(
-            userId: 1,
-            accountIds: [1001],
-            activeIds: [501],
-        );
-
-        $service->fetchAllUserData();
-        $path = $service->saveBackupToFile($this->makeBackupPath(), true);
+        $storage = new FileStorageService();
+        $path = $storage->saveToFile($this->makeBackupPath(), $this->makeBackupPayload(), true);
 
         $entries = iterator_to_array((new FileStorageService())->streamBackupData($path), false);
 
@@ -170,16 +105,10 @@ class UserBackupServiceTest extends TestCase
         $this->assertSame('AAPL', $entries[3]['row']['symbol']);
     }
 
-    /**
-     * @allure.title("Потоковое чтение учитывает пустые таблицы")
-     * @allure.description("Пустой массив таблицы не должен ломать parser и не должен отдавать фиктивные строки.")
-     * @allure.severity(normal)
-     * @allure.story("Чтение бэкапа")
-     */
     public function test_it_handles_empty_tables_in_stream_reader(): void
     {
         $storage = new FileStorageService();
-        $path = base_path('resources/backup_actives/test-empty/empty.json');
+        $path = $this->backupDir . DIRECTORY_SEPARATOR . 'empty.json';
 
         $storage->saveToFile($path, [
             'users' => [[['id' => 1, 'name' => 'Alice']]],
@@ -193,54 +122,253 @@ class UserBackupServiceTest extends TestCase
         $this->assertSame('Alice', $entries[0]['row']['name']);
     }
 
-    private function makeBackupService(int $userId, array $accountIds, array $activeIds): UserBackupService
+    public function test_fetch_all_user_data_collects_streams_from_connections(): void
     {
-        $databaseService = new DatabaseService(['testing']);
-        $backupProcessor = new BackupProcessor();
-        $fileStorageService = new FileStorageService();
+        $databaseService = Mockery::mock(DatabaseServiceInterface::class);
+        $backupProcessor = Mockery::mock(BackupProcessorInterface::class);
+        $fileStorageService = Mockery::mock(FileStorageServiceInterface::class);
 
-        return new UserBackupService(
-            $userId,
+        $schema = Mockery::mock(Builder::class);
+        $schema->shouldReceive('hasTable')->with('users')->andReturnTrue();
+        $schema->shouldReceive('hasTable')->with('positions')->andReturnTrue();
+
+        $connection = Mockery::mock(Connection::class);
+        $connection->shouldReceive('getDriverName')->andReturn('sqlite');
+        $connection->shouldReceive('select')
+            ->once()
+            ->with("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+            ->andReturn([(object) ['name' => 'users'], (object) ['name' => 'positions']]);
+        $connection->shouldReceive('getSchemaBuilder')->andReturn($schema);
+
+        DB::shouldReceive('connection')->with('testing')->andReturn($connection);
+
+        $usersStream = $this->makeGenerator([['id' => 42, 'name' => 'Alice']]);
+        $positionsStream = $this->makeGenerator([['id' => 1, 'user_id' => 42, 'symbol' => 'AAPL']]);
+
+        $databaseService->shouldReceive('getConnections')->once()->andReturn(['testing']);
+        $databaseService->shouldReceive('streamUserData')
+            ->once()
+            ->with('users', ['id' => [42]], 'testing')
+            ->andReturn($usersStream);
+        $databaseService->shouldReceive('streamUserData')
+            ->once()
+            ->with('positions', ['user_id' => [42], 'account_id' => [1001], 'active_id' => [501]], 'testing')
+            ->andReturn($positionsStream);
+
+        $backupProcessor->shouldReceive('clearUserData')->once();
+        $backupProcessor->shouldReceive('appendUserData')->once()->with('users', $usersStream);
+        $backupProcessor->shouldReceive('appendUserData')->once()->with('positions', $positionsStream);
+        $backupProcessor->shouldReceive('getUserData')->once()->andReturn([
+            'users' => [$usersStream],
+            'positions' => [$positionsStream],
+        ]);
+
+        $service = new UserBackupService(
+            42,
             $databaseService,
             $backupProcessor,
             $fileStorageService,
-            $accountIds,
-            $activeIds,
-            ignoredTables: [],
+            [1001],
+            [501],
+            [],
         );
+
+        $result = $service->fetchAllUserData();
+
+        $this->assertArrayHasKey('users', $result);
+        $this->assertArrayHasKey('positions', $result);
     }
 
-    private function seedData(): void
+    public function test_fetch_all_user_data_skips_ignored_and_missing_tables(): void
     {
-        $connection = app('db')->connection('testing');
+        $databaseService = Mockery::mock(DatabaseServiceInterface::class);
+        $backupProcessor = Mockery::mock(BackupProcessorInterface::class);
+        $fileStorageService = Mockery::mock(FileStorageServiceInterface::class);
 
-        $connection->table('users')->insert([
-            ['id' => 1, 'name' => 'Alice'],
-            ['id' => 2, 'name' => 'Bob'],
-        ]);
+        $schema = Mockery::mock(Builder::class);
+        $schema->shouldReceive('hasTable')->with('users')->never();
+        $schema->shouldReceive('hasTable')->with('positions')->andReturnFalse();
 
-        $connection->table('transactions')->insert([
+        $connection = Mockery::mock(Connection::class);
+        $connection->shouldReceive('getDriverName')->andReturn('sqlite');
+        $connection->shouldReceive('select')
+            ->once()
+            ->with("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+            ->andReturn([(object) ['name' => 'users'], (object) ['name' => 'positions']]);
+        $connection->shouldReceive('getSchemaBuilder')->andReturn($schema);
+
+        DB::shouldReceive('connection')->with('testing')->andReturn($connection);
+
+        $databaseService->shouldReceive('getConnections')->once()->andReturn(['testing']);
+        $databaseService->shouldNotReceive('streamUserData');
+
+        $backupProcessor->shouldReceive('clearUserData')->once();
+        $backupProcessor->shouldReceive('getUserData')->once()->andReturn([]);
+        $backupProcessor->shouldNotReceive('appendUserData');
+
+        $service = new UserBackupService(
+            42,
+            $databaseService,
+            $backupProcessor,
+            $fileStorageService,
+            [1001],
+            [501],
+            ['users'],
+        );
+
+        $this->assertSame([], $service->fetchAllUserData());
+    }
+
+    public function test_save_backup_to_file_delegates_to_storage_service(): void
+    {
+        $databaseService = Mockery::mock(DatabaseServiceInterface::class);
+        $backupProcessor = Mockery::mock(BackupProcessorInterface::class);
+        $fileStorageService = Mockery::mock(FileStorageServiceInterface::class);
+
+        $expectedData = [
+            'users' => [$this->makeGenerator([['id' => 1]])],
+        ];
+
+        $backupProcessor->shouldReceive('clearUserData')->once();
+        $backupProcessor->shouldReceive('getUserData')->once()->andReturn($expectedData);
+        $backupProcessor->shouldReceive('appendUserData')->once();
+
+        $databaseService->shouldReceive('getConnections')->once()->andReturn(['testing']);
+
+        $schema = Mockery::mock(Builder::class);
+        $schema->shouldReceive('hasTable')->with('users')->andReturnTrue();
+
+        $connection = Mockery::mock(Connection::class);
+        $connection->shouldReceive('getDriverName')->andReturn('sqlite');
+        $connection->shouldReceive('select')
+            ->once()
+            ->with("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+            ->andReturn([(object) ['name' => 'users']]);
+        $connection->shouldReceive('getSchemaBuilder')->andReturn($schema);
+
+        DB::shouldReceive('connection')->with('testing')->andReturn($connection);
+
+        $stream = $this->makeGenerator([['id' => 1]]);
+        $databaseService->shouldReceive('streamUserData')
+            ->once()
+            ->with('users', ['id' => [1]], 'testing')
+            ->andReturn($stream);
+
+        $fileStorageService->shouldReceive('saveToFile')
+            ->once()
+            ->with('/tmp/output.json', $expectedData, false)
+            ->andReturn('/tmp/output.json');
+
+        $service = new UserBackupService(
+            1,
+            $databaseService,
+            $backupProcessor,
+            $fileStorageService,
+        );
+
+        $service->fetchAllUserData();
+
+        $this->assertSame('/tmp/output.json', $service->saveBackupToFile('/tmp/output.json', false));
+    }
+
+    public function test_create_builds_default_service_graph(): void
+    {
+        $service = UserBackupService::create(
+            userId: 42,
+            accountIds: [1001],
+            activeIds: [501],
+            ignoredTables: ['logs'],
+            connections: ['mysql'],
+        );
+
+        $this->assertInstanceOf(UserBackupService::class, $service);
+
+        $reflection = new \ReflectionClass($service);
+
+        $databaseProperty = $reflection->getProperty('databaseService');
+        $databaseProperty->setAccessible(true);
+        $this->assertInstanceOf(DatabaseService::class, $databaseProperty->getValue($service));
+
+        $backupProperty = $reflection->getProperty('backupProcessor');
+        $backupProperty->setAccessible(true);
+        $this->assertInstanceOf(BackupProcessor::class, $backupProperty->getValue($service));
+
+        $storageProperty = $reflection->getProperty('fileStorageService');
+        $storageProperty->setAccessible(true);
+        $this->assertInstanceOf(FileStorageService::class, $storageProperty->getValue($service));
+    }
+
+    public function test_fetch_all_user_data_reads_mysql_table_listing(): void
+    {
+        $databaseService = Mockery::mock(DatabaseServiceInterface::class);
+        $backupProcessor = Mockery::mock(BackupProcessorInterface::class);
+        $fileStorageService = Mockery::mock(FileStorageServiceInterface::class);
+
+        $schema = Mockery::mock(Builder::class);
+        $schema->shouldReceive('hasTable')->with('users')->andReturnTrue();
+
+        $connection = Mockery::mock(Connection::class);
+        $connection->shouldReceive('getDriverName')->andReturn('mysql');
+        $connection->shouldReceive('select')->once()->with('SHOW TABLES')->andReturn([['Tables_in_app' => 'users']]);
+        $connection->shouldReceive('getSchemaBuilder')->andReturn($schema);
+
+        DB::shouldReceive('connection')->with('mysql')->andReturn($connection);
+
+        $stream = $this->makeGenerator([['id' => 7]]);
+
+        $databaseService->shouldReceive('getConnections')->once()->andReturn(['mysql']);
+        $databaseService->shouldReceive('streamUserData')->once()->with('users', ['id' => [7]], 'mysql')->andReturn($stream);
+
+        $backupProcessor->shouldReceive('clearUserData')->once();
+        $backupProcessor->shouldReceive('appendUserData')->once()->with('users', $stream);
+        $backupProcessor->shouldReceive('getUserData')->once()->andReturn(['users' => [$stream]]);
+
+        $service = new UserBackupService(
+            7,
+            $databaseService,
+            $backupProcessor,
+            $fileStorageService,
+        );
+
+        $result = $service->fetchAllUserData();
+
+        $this->assertArrayHasKey('users', $result);
+    }
+
+    private function makeBackupPayload(): array
+    {
+        $users = $this->makeGenerator([['id' => 1, 'name' => 'Alice']]);
+        $transactions = $this->makeGenerator([
             ['id' => 1, 'account_id' => 1001, 'amount' => 10.50],
             ['id' => 2, 'account_id' => 1001, 'amount' => 15.25],
-            ['id' => 3, 'account_id' => 2002, 'amount' => 99.99],
         ]);
+        $positions = $this->makeGenerator([['id' => 1, 'user_id' => 1, 'active_id' => 501, 'symbol' => 'AAPL']]);
 
-        $connection->table('positions')->insert([
-            ['id' => 1, 'user_id' => 1, 'active_id' => 501, 'symbol' => 'AAPL'],
-            ['id' => 2, 'user_id' => 2, 'active_id' => 777, 'symbol' => 'MSFT'],
-        ]);
+        return [
+            'users' => [$users],
+            'transactions' => [$transactions],
+            'positions' => [$positions],
+        ];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     */
+    private function makeGenerator(array $rows): Generator
+    {
+        foreach ($rows as $row) {
+            yield $row;
+        }
     }
 
     private function cleanupBackups(): void
     {
-        $baseDir = $this->backupDir;
-
-        if (!is_dir($baseDir)) {
+        if (!is_dir($this->backupDir)) {
             return;
         }
 
         $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($baseDir, \FilesystemIterator::SKIP_DOTS),
+            new \RecursiveDirectoryIterator($this->backupDir, \FilesystemIterator::SKIP_DOTS),
             \RecursiveIteratorIterator::CHILD_FIRST
         );
 
@@ -252,11 +380,11 @@ class UserBackupServiceTest extends TestCase
             }
         }
 
-        rmdir($baseDir);
+        rmdir($this->backupDir);
     }
 
     private function makeBackupPath(): string
     {
-        return $this->backupDir . DIRECTORY_SEPARATOR . 'backup.json';
+        return $this->backupDir . DIRECTORY_SEPARATOR . uniqid('backup_', true) . '.json';
     }
 }

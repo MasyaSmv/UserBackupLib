@@ -2,4 +2,5 @@
 .env
 .idea
 .phpunit.result.cache
+build/
 .workspace-context/
