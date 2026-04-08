@@ -17,8 +17,10 @@
 - Потоковая запись backup JSON в файл.
 - Чанковое шифрование больших backup-файлов.
 - Потоковое чтение backup-файлов через `streamBackupData()`.
+- Объектный сценарий создания backup через `UserBackupCreateOptions`.
 - Ручной сценарий создания backup-сервиса.
 - Контейнерный сценарий через factory.
+- Объектный сценарий очистки через `UserDataScope`.
 - Очистка пользовательских данных после backup.
 
 ## Важные границы
@@ -44,6 +46,23 @@ Packagist:
 
 ```php
 use App\Services\UserBackupService;
+use App\ValueObjects\UserBackupCreateOptions;
+
+$options = UserBackupCreateOptions::fromLegacy(
+    userId: 42,
+    accountIds: [101, 102],
+    activeIds: [501],
+    ignoredTables: ['temp_logs'],
+    connections: ['mysql', 'replica'],
+);
+
+$backup = UserBackupService::createFromOptions($options);
+```
+
+Legacy-совместимый вариант:
+
+```php
+use App\Services\UserBackupService;
 
 $backup = UserBackupService::create(
     userId: 42,
@@ -63,27 +82,51 @@ $path = $backup->saveBackupToFile('/tmp/backup_42.json');
 
 ```php
 use App\Contracts\UserBackupServiceFactoryInterface;
+use App\ValueObjects\UserDataScope;
 
 $factory = app(UserBackupServiceFactoryInterface::class);
 
+$backup = $factory->make(new UserDataScope(
+    userId: 42,
+    accountIds: [101, 102],
+    activeIds: [501],
+    ignoredTables: ['temp_logs'],
+));
+
+$backup->fetchAllUserData();
+$path = $backup->saveBackupToFile(storage_path('app/backups/user-42.json'));
+```
+
+Legacy-совместимый вариант:
+
+```php
 $backup = $factory->makeForUser(
     userId: 42,
     accountIds: [101, 102],
     activeIds: [501],
     ignoredTables: ['temp_logs'],
 );
-
-$backup->fetchAllUserData();
-$path = $backup->saveBackupToFile(storage_path('app/backups/user-42.json'));
 ```
 
 ## Очистка данных
 
 ```php
 use App\Contracts\UserDataDeletionServiceInterface;
+use App\ValueObjects\UserDataScope;
 
 $cleaner = app(UserDataDeletionServiceInterface::class);
 
+$cleaner->deleteScope(new UserDataScope(
+    userId: 42,
+    accountIds: [101, 102],
+    activeIds: [501],
+    ignoredTables: ['temp_logs'],
+));
+```
+
+Legacy-совместимый вариант:
+
+```php
 $cleaner->deleteUserData(
     userId: 42,
     accountIds: [101, 102],
@@ -115,6 +158,12 @@ foreach ($storage->streamBackupData('/tmp/backup_42.json.enc') as $entry) {
 }
 ```
 
+Совместимость форматов:
+
+- `.json` читается потоково.
+- новый чанковый `.json.enc` читается потоково.
+- legacy `.enc` поддерживается по совместимости, но не гарантирует ту же memory-efficiency на очень больших файлах.
+
 ## Конфигурация
 
 Пакетный конфиг: [config/user-backup.php](config/user-backup.php)
@@ -130,6 +179,7 @@ return [
 - если `user-backup.connections` пуст, пакет берет все ключи из `database.connections`;
 - для шифрования используется стандартный `APP_KEY` Laravel;
 - путь сохранения backup выбирает приложение, не пакет.
+- параметр `accountIds` в текущей интеграции проекта исторический и по факту содержит ids субсчетов.
 
 ## Тесты
 
