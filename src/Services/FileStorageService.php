@@ -164,11 +164,7 @@ class FileStorageService implements FileStorageServiceInterface
 
         $this->fileSystem()->ensureDirectory($directoryPath);
 
-        $tempPath = $filePath . '.tmp';
-
-        $this->fileSystem()->delete($tempPath);
-
-        return $tempPath;
+        return $this->createUniqueTempPath($filePath);
     }
 
     /**
@@ -209,6 +205,26 @@ class FileStorageService implements FileStorageServiceInterface
     protected function createParser(): BackupJsonStreamParser
     {
         return new BackupJsonStreamParser();
+    }
+
+    protected function createTempSuffix(): string
+    {
+        return bin2hex(random_bytes(8));
+    }
+
+    private function createUniqueTempPath(string $filePath): string
+    {
+        $maxAttempts = 10;
+
+        for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
+            $tempPath = sprintf('%s.%s.tmp', $filePath, $this->createTempSuffix());
+
+            if (!$this->fileSystem()->exists($tempPath)) {
+                return $tempPath;
+            }
+        }
+
+        throw new FileStorageException(sprintf('Unable to allocate unique temp file for "%s"', $filePath));
     }
 
     protected function fileSystem(): FileSystemAdapter

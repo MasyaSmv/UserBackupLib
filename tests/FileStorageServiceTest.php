@@ -260,7 +260,7 @@ class FileStorageServiceTest extends TestCase
         iterator_to_array($storage->streamBackupData($path), false);
     }
 
-    public function test_save_to_file_replaces_existing_temp_file(): void
+    public function test_save_to_file_ignores_legacy_fixed_temp_path_and_saves_successfully(): void
     {
         $storage = new FileStorageService();
         $path = $this->makePath('replace-temp.json');
@@ -273,7 +273,7 @@ class FileStorageServiceTest extends TestCase
         ], false);
 
         $this->assertFileExists($path);
-        $this->assertFileDoesNotExist($tempPath);
+        $this->assertSame('stale', file_get_contents($tempPath));
     }
 
     public function test_save_to_file_supports_non_iterable_table_chunk_values(): void
@@ -433,6 +433,50 @@ class FileStorageServiceTest extends TestCase
 
         $this->assertSame($path . '.enc', $result);
         $this->assertArrayHasKey($path . '.enc', $adapter->written);
+    }
+
+    public function test_save_to_file_retries_unique_temp_path_when_first_candidate_exists(): void
+    {
+        $path = $this->makePath('collision.json');
+        $existingTempPath = $path . '.first.tmp';
+        $this->writeFile($existingTempPath, 'occupied');
+
+        $storage = new class extends FileStorageService {
+            private array $suffixes = ['first', 'second'];
+
+            protected function createTempSuffix(): string
+            {
+                return array_shift($this->suffixes) ?? 'fallback';
+            }
+        };
+
+        $result = $storage->saveToFile($path, [
+            'users' => [['marker']],
+        ], false);
+
+        $this->assertSame($path, $result);
+        $this->assertFileExists($path);
+        $this->assertFileExists($existingTempPath);
+    }
+
+    public function test_save_to_file_throws_when_unique_temp_path_cannot_be_allocated(): void
+    {
+        $path = $this->makePath('exhausted.json');
+        $this->writeFile($path . '.fixed.tmp', 'occupied');
+
+        $storage = new class extends FileStorageService {
+            protected function createTempSuffix(): string
+            {
+                return 'fixed';
+            }
+        };
+
+        $this->expectException(FileStorageException::class);
+        $this->expectExceptionMessage('Unable to allocate unique temp file');
+
+        $storage->saveToFile($path, [
+            'users' => [['marker']],
+        ], false);
     }
 
     private function makePath(string $filename): string
