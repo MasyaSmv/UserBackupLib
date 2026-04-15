@@ -188,7 +188,7 @@ $backup = app(UserBackupServiceFactoryInterface::class)->make($scope);
 
 ## 7. Конфигурация
 
-Файл: [config/user-backup.php](/home/masya/projects/UserBackupLib/config/user-backup.php)
+Файл: [config/user-backup.php](../config/user-backup.php)
 
 ```php
 return [

@@ -4,8 +4,8 @@
 [![Composer package](https://img.shields.io/badge/Composer-fin%2Fuser--backup--lib-885630?logo=composer&logoColor=white)](https://packagist.org/packages/fin/user-backup-lib)
 [![Laravel Support](https://img.shields.io/badge/Laravel-8.x-FF2D20?logo=laravel&logoColor=white)](https://laravel.com/docs/8.x)
 [![PHPUnit](https://img.shields.io/badge/PHPUnit-9.6-366488?logo=php&logoColor=white)](https://phpunit.de/)
-[![Coverage](https://img.shields.io/badge/Coverage-100%25-brightgreen)](/home/masya/projects/UserBackupLib/build/coverage/index.html)
-[![Docs](https://img.shields.io/badge/Docs-user--backup--guide-blue)](/home/masya/projects/UserBackupLib/docs/user-backup-guide.md)
+[![Coverage](https://img.shields.io/badge/Coverage-100%25-brightgreen)](#%D1%82%D0%B5%D1%81%D1%82%D1%8B)
+[![Docs](https://img.shields.io/badge/Docs-user--backup--guide-blue)](docs/user-backup-guide.md)
 
 Библиотека для резервного копирования пользовательских данных из нескольких баз данных с потоковой записью, чанковым шифрованием и опциональным удалением исходных данных.
 
