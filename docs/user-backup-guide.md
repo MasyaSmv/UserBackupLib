@@ -1,5 +1,12 @@
 # UserBackupLib Guide
 
+Навигация:
+
+- [README](../README.md)
+- [GitHub Wiki](https://github.com/MasyaSmv/UserBackupLib/wiki)
+- [Laravel integration notes](https://github.com/MasyaSmv/UserBackupLib/wiki/Laravel-Integration)
+- [Release notes](https://github.com/MasyaSmv/UserBackupLib/wiki/Release-Notes)
+
 ## 1. Назначение
 
 `UserBackupLib` нужен для трех связанных сценариев:

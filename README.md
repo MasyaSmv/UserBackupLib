@@ -6,10 +6,18 @@
 [![PHPUnit](https://img.shields.io/badge/PHPUnit-9.6-366488?logo=php&logoColor=white)](https://phpunit.de/)
 [![Coverage](https://img.shields.io/badge/Coverage-100%25-brightgreen)](#%D1%82%D0%B5%D1%81%D1%82%D1%8B)
 [![Docs](https://img.shields.io/badge/Docs-user--backup--guide-blue)](docs/user-backup-guide.md)
+[![Wiki](https://img.shields.io/badge/Wiki-GitHub-black?logo=github)](https://github.com/MasyaSmv/UserBackupLib/wiki)
+[![Release](https://img.shields.io/badge/Release-v2.1.0-green)](https://github.com/MasyaSmv/UserBackupLib/releases/tag/v2.1.0)
 
 Библиотека для резервного копирования пользовательских данных из нескольких баз данных с потоковой записью, чанковым шифрованием и опциональным удалением исходных данных.
 
-Подробная документация: [docs/user-backup-guide.md](docs/user-backup-guide.md)
+Документация:
+
+- [README quick start](README.md)
+- [Подробный гайд](docs/user-backup-guide.md)
+- [GitHub Wiki](https://github.com/MasyaSmv/UserBackupLib/wiki)
+- [Laravel integration notes](https://github.com/MasyaSmv/UserBackupLib/wiki/Laravel-Integration)
+- [Release notes](https://github.com/MasyaSmv/UserBackupLib/wiki/Release-Notes)
 
 ## Возможности
 
