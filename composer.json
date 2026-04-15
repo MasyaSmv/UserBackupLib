@@ -1,6 +1,7 @@
 {
   "name": "fin/user-backup-lib",
   "description": "Библиотека PHP для резервного копирования пользовательских данных из нескольких баз данных.",
+  "license": "MIT",
   "type": "library",
   "require": {
     "php": "^8.0",
