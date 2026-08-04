@@ -7,12 +7,12 @@ namespace App\Services;
 use App\Contracts\DatabaseServiceInterface;
 use App\Contracts\TableFilter;
 use App\Services\Concerns\TableFiltering;
+use App\Services\Internal\ConnectionSchema;
 use App\ValueObjects\ConnectionNames;
 use App\ValueObjects\LiteralFilter;
 use App\ValueObjects\SubqueryFilter;
 use App\ValueObjects\TableQueryParameters;
 use Generator;
-use Illuminate\Database\Schema\Builder as SchemaBuilder;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -30,6 +30,13 @@ class DatabaseService implements DatabaseServiceInterface
     public const DEFAULT_CHUNK_SIZE = 5000;
 
     protected ConnectionNames $connections;
+
+    /**
+     * Снимки схем подключений, загружаемые один раз (таблицы/колонки/PK за один запрос).
+     *
+     * @var array<string, ConnectionSchema>
+     */
+    private array $schemas = [];
 
     /**
      * @param array<int, string> $connections Список имён подключений, зарегистрированных в config/database.php.
@@ -76,14 +83,13 @@ class DatabaseService implements DatabaseServiceInterface
             ? $params
             : TableQueryParameters::fromArray($params);
 
-        $connection = DB::connection($connectionName);
-        $schema = $connection->getSchemaBuilder();
+        $schema = $this->schema($connectionName);
 
         if (!$schema->hasTable($table)) {
             return;
         }
 
-        $columns = $this->getTableColumns($table, $connectionName);
+        $columns = $schema->columns($table);
         $field = $this->determineFilterField($table, $columns);
 
         if (!$field) {
@@ -96,14 +102,13 @@ class DatabaseService implements DatabaseServiceInterface
             return;
         }
 
-        $query = $connection->table($table);
+        $query = DB::connection($connectionName)->table($table);
         $filter->applyTo($query, $field);
 
-        $primaryKey = $this->determinePrimaryKey($table, $connectionName);
+        $primaryKey = $schema->numericPrimaryKey($table);
 
         // Keyset-пагинация (lazyById) по числовому PK — не деградирует с глубиной.
-        // Для составных/нечисловых ключей keyset невозможен → chunked-fallback (lazy),
-        // который под капотом использует OFFSET, но такие таблицы в scope невелики.
+        // Для составных/нечисловых ключей keyset невозможен → chunked-fallback (lazy).
         $rows = $primaryKey !== null
             ? $query->lazyById($chunkSize, $primaryKey)
             : $query->orderBy($field)->lazy($chunkSize);
@@ -119,6 +124,30 @@ class DatabaseService implements DatabaseServiceInterface
     }
 
     /**
+     * Имена таблиц подключения (из предзагруженного снимка схемы, без round-trip).
+     *
+     * @return array<int, string>
+     */
+    public function getTables(string $connectionName): array
+    {
+        return $this->schema($connectionName)->tables();
+    }
+
+    public function hasTable(string $connectionName, string $table): bool
+    {
+        return $this->schema($connectionName)->hasTable($table);
+    }
+
+    /**
+     * Ленивая загрузка снимка схемы подключения (один запрос на подключение).
+     */
+    private function schema(string $connectionName): ConnectionSchema
+    {
+        return $this->schemas[$connectionName]
+            ??= ConnectionSchema::load(DB::connection($connectionName));
+    }
+
+    /**
      * Выбирает критерий фильтрации таблицы: коррелированный подзапрос, если для поля
      * задана спецификация и её таблица доступна в подключении; иначе — литеральный список.
      */
@@ -126,7 +155,7 @@ class DatabaseService implements DatabaseServiceInterface
         TableQueryParameters $filters,
         string $field,
         array $columns,
-        SchemaBuilder $schema
+        ConnectionSchema $schema
     ): TableFilter {
         $subquery = $filters->subqueryFor($field);
 

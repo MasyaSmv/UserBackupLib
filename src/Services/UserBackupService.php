@@ -107,14 +107,12 @@ class UserBackupService implements UserBackupServiceInterface
         $this->backupProcessor->clearUserData();
 
         foreach ($this->databaseService->getConnections() as $connectionName) {
-            $tables = $this->getTables($connectionName);
+            // Список таблиц берётся из предзагруженного снимка схемы (без round-trip на
+            // hasTable по каждой таблице): streamUserData сам пропустит отсутствующие.
+            $tables = $this->databaseService->getTables($connectionName);
 
             foreach ($tables as $table) {
                 if ($this->scope->isIgnoredTable($table)) {
-                    continue;
-                }
-
-                if (!DB::connection($connectionName)->getSchemaBuilder()->hasTable($table)) {
                     continue;
                 }
 
@@ -131,30 +129,6 @@ class UserBackupService implements UserBackupServiceInterface
         $this->userData = $this->backupProcessor->getUserData();
 
         return $this->userData;
-    }
-
-    /**
-     * Возвращает список таблиц для подключения без зависимостей от Doctrine DBAL.
-     *
-     * @param string $connectionName
-     * @return array<int, string>
-     */
-    private function getTables(string $connectionName): array
-    {
-        $connection = DB::connection($connectionName);
-        $driver = $connection->getDriverName();
-
-        if ($driver === 'sqlite') {
-            $rows = $connection->select("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'");
-
-            return array_map(static function ($row) {
-                return $row->name;
-            }, $rows);
-        }
-
-        $rows = $connection->select('SHOW TABLES');
-
-        return array_map('current', $rows);
     }
 
     /**

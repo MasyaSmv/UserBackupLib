@@ -143,24 +143,11 @@ class UserBackupServiceTest extends TestCase
         $backupProcessor = Mockery::mock(BackupProcessorInterface::class);
         $fileStorageService = Mockery::mock(FileStorageServiceInterface::class);
 
-        $schema = Mockery::mock(Builder::class);
-        $schema->shouldReceive('hasTable')->with('users')->andReturnTrue();
-        $schema->shouldReceive('hasTable')->with('positions')->andReturnTrue();
-
-        $connection = Mockery::mock(Connection::class);
-        $connection->shouldReceive('getDriverName')->andReturn('sqlite');
-        $connection->shouldReceive('select')
-            ->once()
-            ->with("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
-            ->andReturn([(object) ['name' => 'users'], (object) ['name' => 'positions']]);
-        $connection->shouldReceive('getSchemaBuilder')->andReturn($schema);
-
-        DB::shouldReceive('connection')->with('testing')->andReturn($connection);
-
         $usersStream = $this->makeGenerator([['id' => 42, 'name' => 'Alice']]);
         $positionsStream = $this->makeGenerator([['id' => 1, 'user_id' => 42, 'symbol' => 'AAPL']]);
 
         $databaseService->shouldReceive('getConnections')->once()->andReturn(['testing']);
+        $databaseService->shouldReceive('getTables')->once()->with('testing')->andReturn(['users', 'positions']);
         $databaseService->shouldReceive('streamUserData')
             ->once()
             ->with('users', $this->paramsMatching(['id' => [42]]), 'testing')
@@ -194,32 +181,27 @@ class UserBackupServiceTest extends TestCase
         $this->assertArrayHasKey('positions', $result);
     }
 
-    public function test_fetch_all_user_data_skips_ignored_and_missing_tables(): void
+    public function test_fetch_all_user_data_skips_ignored_tables(): void
     {
         $databaseService = Mockery::mock(DatabaseServiceInterface::class);
         $backupProcessor = Mockery::mock(BackupProcessorInterface::class);
         $fileStorageService = Mockery::mock(FileStorageServiceInterface::class);
 
-        $schema = Mockery::mock(Builder::class);
-        $schema->shouldReceive('hasTable')->with('users')->never();
-        $schema->shouldReceive('hasTable')->with('positions')->andReturnFalse();
-
-        $connection = Mockery::mock(Connection::class);
-        $connection->shouldReceive('getDriverName')->andReturn('sqlite');
-        $connection->shouldReceive('select')
-            ->once()
-            ->with("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
-            ->andReturn([(object) ['name' => 'users'], (object) ['name' => 'positions']]);
-        $connection->shouldReceive('getSchemaBuilder')->andReturn($schema);
-
-        DB::shouldReceive('connection')->with('testing')->andReturn($connection);
+        // 'users' в ignoredTables → пропускается на уровне сервиса, до БД не доходит.
+        // Отсутствующие/пустые таблицы отсекает уже streamUserData (не UserBackupService).
+        $positionsStream = $this->makeGenerator([['id' => 1, 'user_id' => 42]]);
 
         $databaseService->shouldReceive('getConnections')->once()->andReturn(['testing']);
-        $databaseService->shouldNotReceive('streamUserData');
+        $databaseService->shouldReceive('getTables')->once()->with('testing')->andReturn(['users', 'positions']);
+        $databaseService->shouldNotReceive('streamUserData')->with('users', Mockery::any(), 'testing');
+        $databaseService->shouldReceive('streamUserData')
+            ->once()
+            ->with('positions', $this->paramsMatching(['user_id' => [42], 'account_id' => [1001], 'active_id' => [501]]), 'testing')
+            ->andReturn($positionsStream);
 
         $backupProcessor->shouldReceive('clearUserData')->once();
-        $backupProcessor->shouldReceive('getUserData')->once()->andReturn([]);
-        $backupProcessor->shouldNotReceive('appendUserData');
+        $backupProcessor->shouldReceive('appendUserData')->once()->with('positions', $positionsStream);
+        $backupProcessor->shouldReceive('getUserData')->once()->andReturn(['positions' => [$positionsStream]]);
 
         $service = new UserBackupService(
             42,
@@ -231,7 +213,7 @@ class UserBackupServiceTest extends TestCase
             ['users'],
         );
 
-        $this->assertSame([], $service->fetchAllUserData());
+        $this->assertArrayHasKey('positions', $service->fetchAllUserData());
     }
 
     public function test_save_backup_to_file_delegates_to_storage_service(): void
@@ -249,19 +231,7 @@ class UserBackupServiceTest extends TestCase
         $backupProcessor->shouldReceive('appendUserData')->once();
 
         $databaseService->shouldReceive('getConnections')->once()->andReturn(['testing']);
-
-        $schema = Mockery::mock(Builder::class);
-        $schema->shouldReceive('hasTable')->with('users')->andReturnTrue();
-
-        $connection = Mockery::mock(Connection::class);
-        $connection->shouldReceive('getDriverName')->andReturn('sqlite');
-        $connection->shouldReceive('select')
-            ->once()
-            ->with("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
-            ->andReturn([(object) ['name' => 'users']]);
-        $connection->shouldReceive('getSchemaBuilder')->andReturn($schema);
-
-        DB::shouldReceive('connection')->with('testing')->andReturn($connection);
+        $databaseService->shouldReceive('getTables')->once()->with('testing')->andReturn(['users']);
 
         $stream = $this->makeGenerator([['id' => 1]]);
         $databaseService->shouldReceive('streamUserData')
@@ -334,25 +304,16 @@ class UserBackupServiceTest extends TestCase
         $this->assertInstanceOf(DatabaseService::class, $databaseProperty->getValue($service));
     }
 
-    public function test_fetch_all_user_data_reads_mysql_table_listing(): void
+    public function test_fetch_all_user_data_uses_database_service_table_list(): void
     {
         $databaseService = Mockery::mock(DatabaseServiceInterface::class);
         $backupProcessor = Mockery::mock(BackupProcessorInterface::class);
         $fileStorageService = Mockery::mock(FileStorageServiceInterface::class);
 
-        $schema = Mockery::mock(Builder::class);
-        $schema->shouldReceive('hasTable')->with('users')->andReturnTrue();
-
-        $connection = Mockery::mock(Connection::class);
-        $connection->shouldReceive('getDriverName')->andReturn('mysql');
-        $connection->shouldReceive('select')->once()->with('SHOW TABLES')->andReturn([['Tables_in_app' => 'users']]);
-        $connection->shouldReceive('getSchemaBuilder')->andReturn($schema);
-
-        DB::shouldReceive('connection')->with('mysql')->andReturn($connection);
-
         $stream = $this->makeGenerator([['id' => 7]]);
 
         $databaseService->shouldReceive('getConnections')->once()->andReturn(['mysql']);
+        $databaseService->shouldReceive('getTables')->once()->with('mysql')->andReturn(['users']);
         $databaseService->shouldReceive('streamUserData')->once()->with('users', $this->paramsMatching(['id' => [7]]), 'mysql')->andReturn($stream);
 
         $backupProcessor->shouldReceive('clearUserData')->once();

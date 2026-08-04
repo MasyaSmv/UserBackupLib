@@ -63,14 +63,7 @@ class DatabaseServiceTest extends TestCase
 
     public function test_stream_user_data_returns_empty_when_table_is_missing(): void
     {
-        $schema = Mockery::mock(SchemaBuilder::class);
-        $schema->shouldReceive('hasTable')->with('users')->andReturnFalse();
-
-        $connection = Mockery::mock(Connection::class);
-        $connection->shouldReceive('getSchemaBuilder')->andReturn($schema);
-
-        DB::shouldReceive('connection')->with('testing')->andReturn($connection);
-
+        // Таблицы 'users' в схеме нет → ConnectionSchema::hasTable вернёт false.
         $service = new DatabaseService(['testing']);
 
         $this->assertSame([], iterator_to_array($service->streamUserData('users', ['id' => [1]], 'testing')));
@@ -78,27 +71,12 @@ class DatabaseServiceTest extends TestCase
 
     public function test_stream_user_data_returns_empty_when_filter_field_is_unknown(): void
     {
-        $schema = Mockery::mock(SchemaBuilder::class);
-        $schema->shouldReceive('hasTable')->with('logs')->andReturnTrue();
+        Schema::connection('testing')->create('logs', function (Blueprint $table): void {
+            $table->bigIncrements('id');
+            $table->string('message');
+        });
 
-        $pdo = new class {
-            public function quote(string $table): string
-            {
-                return $table;
-            }
-        };
-
-        $connection = Mockery::mock(Connection::class);
-        $connection->shouldReceive('getSchemaBuilder')->andReturn($schema);
-        $connection->shouldReceive('getDriverName')->andReturn('sqlite');
-        $connection->shouldReceive('getPdo')->andReturn($pdo);
-        $connection->shouldReceive('select')
-            ->once()
-            ->with('PRAGMA table_info(logs)')
-            ->andReturn([(object) ['name' => 'id'], (object) ['name' => 'message']]);
-
-        DB::shouldReceive('connection')->with('testing')->andReturn($connection);
-
+        // Нет user_id/account_id/active_id → фильтр-поле не определяется → выгрузки нет.
         $service = new DatabaseService(['testing']);
 
         $this->assertSame([], iterator_to_array($service->streamUserData('logs', ['id' => [1]], 'testing')));
@@ -106,27 +84,12 @@ class DatabaseServiceTest extends TestCase
 
     public function test_stream_user_data_returns_empty_when_filter_values_are_empty(): void
     {
-        $schema = Mockery::mock(SchemaBuilder::class);
-        $schema->shouldReceive('hasTable')->with('transactions')->andReturnTrue();
+        Schema::connection('testing')->create('transactions', function (Blueprint $table): void {
+            $table->bigIncrements('id');
+            $table->unsignedBigInteger('account_id');
+        });
 
-        $pdo = new class {
-            public function quote(string $table): string
-            {
-                return $table;
-            }
-        };
-
-        $connection = Mockery::mock(Connection::class);
-        $connection->shouldReceive('getSchemaBuilder')->andReturn($schema);
-        $connection->shouldReceive('getDriverName')->andReturn('sqlite');
-        $connection->shouldReceive('getPdo')->andReturn($pdo);
-        $connection->shouldReceive('select')
-            ->once()
-            ->with('PRAGMA table_info(transactions)')
-            ->andReturn([(object) ['name' => 'id'], (object) ['name' => 'account_id']]);
-
-        DB::shouldReceive('connection')->with('testing')->andReturn($connection);
-
+        // Фильтр-поле account_id есть, но значений не передано → пустой фильтр → выгрузки нет.
         $service = new DatabaseService(['testing']);
 
         $this->assertSame([], iterator_to_array($service->streamUserData('transactions', [], 'testing')));

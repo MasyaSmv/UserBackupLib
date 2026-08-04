@@ -19,6 +19,18 @@ interface DatabaseServiceInterface
     public function getConnections(): array;
 
     /**
+     * Имена таблиц подключения (из предзагруженного снимка схемы).
+     *
+     * @return array<int, string>
+     */
+    public function getTables(string $connectionName): array;
+
+    /**
+     * Есть ли таблица в подключении (из предзагруженного снимка схемы).
+     */
+    public function hasTable(string $connectionName, string $table): bool;
+
+    /**
      * Собирает данные пользователя из всех подключений для конкретной таблицы.
      *
      * @param string $table  Имя таблицы.

@@ -508,6 +508,27 @@ class FileStorageServiceTest extends TestCase
         ], false);
     }
 
+    public function test_save_to_file_omits_empty_tables(): void
+    {
+        $path = $this->makePath('with-empty.json');
+
+        // 'empty_table' не отдаёт ни одной строки — её секции в файле быть не должно.
+        $storage = new FileStorageService();
+        $storage->saveToFile($path, [
+            'empty_table' => [(static function () { yield from []; })()],
+            'users' => [(static function () { yield ['id' => 1]; })()],
+            'also_empty' => [[]],
+        ], false);
+
+        $json = (string) file_get_contents($path);
+        $decoded = json_decode($json, true);
+
+        $this->assertSame(['users'], array_keys($decoded), 'Пустые таблицы не должны попадать в файл');
+        $this->assertSame([['id' => 1]], $decoded['users']);
+        // Валидность JSON (нет висячих запятых от пропущенных секций).
+        $this->assertNotNull($decoded, 'Файл должен быть валидным JSON');
+    }
+
     private function makePath(string $filename): string
     {
         return $this->baseDir . DIRECTORY_SEPARATOR . $filename;

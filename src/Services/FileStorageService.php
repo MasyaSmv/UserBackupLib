@@ -94,15 +94,22 @@ class FileStorageService implements FileStorageServiceInterface
         $isFirstTable = true;
 
         foreach ($data as $table => $tableChunks) {
-            if (!$isFirstTable) {
-                $this->writeChunk($handle, ',');
-            }
-
-            $this->writeChunk($handle, json_encode((string) $table, JSON_UNESCAPED_UNICODE) . ':[');
-
+            $tableStarted = false;
             $isFirstRow = true;
 
             foreach ($this->iterateTableRows($tableChunks) as $row) {
+                // Заголовок секции пишем ЛЕНИВО — только при первой строке. Таблицы без
+                // строк вообще не попадают в файл: восстанавливать в них нечего, а мы
+                // экономим на записи и на разборе при restore.
+                if (!$tableStarted) {
+                    if (!$isFirstTable) {
+                        $this->writeChunk($handle, ',');
+                    }
+
+                    $this->writeChunk($handle, json_encode((string) $table, JSON_UNESCAPED_UNICODE) . ':[');
+                    $tableStarted = true;
+                }
+
                 if (!$isFirstRow) {
                     $this->writeChunk($handle, ',');
                 }
@@ -116,8 +123,10 @@ class FileStorageService implements FileStorageServiceInterface
                 $isFirstRow = false;
             }
 
-            $this->writeChunk($handle, ']');
-            $isFirstTable = false;
+            if ($tableStarted) {
+                $this->writeChunk($handle, ']');
+                $isFirstTable = false;
+            }
         }
 
         $this->writeChunk($handle, '}');
