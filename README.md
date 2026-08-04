@@ -7,7 +7,7 @@
 [![Coverage](https://img.shields.io/badge/Coverage-100%25-brightgreen)](#%D1%82%D0%B5%D1%81%D1%82%D1%8B)
 [![Docs](https://img.shields.io/badge/Docs-user--backup--guide-blue)](docs/user-backup-guide.md)
 [![Wiki](https://img.shields.io/badge/Wiki-GitHub-black?logo=github)](https://github.com/MasyaSmv/UserBackupLib/wiki)
-[![Release](https://img.shields.io/badge/Release-v2.1.0-green)](https://github.com/MasyaSmv/UserBackupLib/releases/tag/v2.1.0)
+[![Release](https://img.shields.io/badge/Release-v2.2.0-green)](https://github.com/MasyaSmv/UserBackupLib/releases/tag/v2.2.0)
 
 Библиотека для резервного копирования пользовательских данных из нескольких баз данных с потоковой записью, чанковым шифрованием и опциональным удалением исходных данных.
 
@@ -30,6 +30,8 @@
 - Контейнерный сценарий через factory.
 - Объектный сценарий очистки через `UserDataScope`.
 - Очистка пользовательских данных после backup.
+- **Keyset-пагинация** (`lazyById`) по числовому первичному ключу — не деградирует с глубиной; для составных/нечисловых PK автоматический OFFSET-fallback.
+- **Подзапрос-фильтр** через `FilterSubquery` — замена `whereIn([десятки тысяч литералов])` на компактный `IN (SELECT ...)`.
 
 ## Важные границы
 
@@ -85,6 +87,39 @@ $backup->fetchAllUserData();
 $path = $backup->saveBackupToFile('/tmp/backup_42.json');
 // вернется /tmp/backup_42.json.enc
 ```
+
+### Подзапрос-фильтр вместо гигантского whereIn
+
+Когда набор значений фильтра огромен (например, десятки тысяч `active_id`), передача их
+литеральным списком делает SQL многокилобайтным и дорогим в разборе на каждой таблице.
+Вместо этого можно передать спецификацию подзапроса — библиотека подставит
+`active_id IN (SELECT id FROM actives WHERE user_id = ?)`. Подзапрос применяется только
+если целевая таблица (`actives`) присутствует в подключении; иначе — обычный `whereIn`.
+
+```php
+use App\Services\UserBackupService;
+use App\ValueObjects\FilterSubquery;
+
+$backup = UserBackupService::create(
+    userId: 42,
+    accountIds: [101, 102],
+    activeIds: [501, 502],          // используется как fallback, если подзапрос неприменим
+    ignoredTables: ['temp_logs'],
+    connections: ['mysql', 'replica'],
+    activeIdSubquery: new FilterSubquery(
+        table: 'actives',           // откуда брать id
+        selectColumn: 'id',
+        whereColumn: 'user_id',
+        whereValue: 42,
+    ),
+);
+
+$backup->fetchAllUserData();
+$path = $backup->saveBackupToFile('/tmp/backup_42.json');
+```
+
+> Важно: подзапрос обязан воспроизводить тот же набор строк, что и литеральный список
+> (те же soft-delete/scope-условия), иначе в backup попадут «лишние» строки.
 
 ### Контейнерный сценарий
 

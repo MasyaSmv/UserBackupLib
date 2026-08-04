@@ -17,16 +17,18 @@ final class UserBackupCreateOptions
      * @param array<int, int|string> $activeIds
      * @param array<int, string> $ignoredTables
      * @param array<int, string> $connections
+     * @param FilterSubquery|null $activeIdSubquery Необязательный подзапрос для active_id (см. UserDataScope).
      */
     public static function fromLegacy(
         int $userId,
         array $accountIds = [],
         array $activeIds = [],
         array $ignoredTables = [],
-        array $connections = []
+        array $connections = [],
+        ?FilterSubquery $activeIdSubquery = null
     ): self {
         return new self(
-            new UserDataScope($userId, $accountIds, $activeIds, $ignoredTables),
+            new UserDataScope($userId, $accountIds, $activeIds, $ignoredTables, $activeIdSubquery),
             new ConnectionNames($connections),
         );
     }

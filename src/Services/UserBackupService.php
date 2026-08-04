@@ -9,6 +9,7 @@ use App\Contracts\DatabaseServiceInterface;
 use App\Contracts\FileStorageServiceInterface;
 use App\Contracts\UserBackupServiceInterface;
 use App\Services\UserBackupServiceFactory;
+use App\ValueObjects\FilterSubquery;
 use App\ValueObjects\UserBackupCreateOptions;
 use App\ValueObjects\UserDataScope;
 use Illuminate\Support\Facades\DB;
@@ -69,10 +70,18 @@ class UserBackupService implements UserBackupServiceInterface
         array $accountIds = [],
         array $activeIds = [],
         array $ignoredTables = [],
-        array $connections = []
+        array $connections = [],
+        ?FilterSubquery $activeIdSubquery = null
     ): self {
         return self::createFromOptions(
-            UserBackupCreateOptions::fromLegacy($userId, $accountIds, $activeIds, $ignoredTables, $connections),
+            UserBackupCreateOptions::fromLegacy(
+                $userId,
+                $accountIds,
+                $activeIds,
+                $ignoredTables,
+                $connections,
+                $activeIdSubquery,
+            ),
         );
     }
 
@@ -111,7 +120,9 @@ class UserBackupService implements UserBackupServiceInterface
 
                 $params = $this->scope->backupParametersForTable($table);
 
-                $stream = $this->databaseService->streamUserData($table, $params->toArray(), $connectionName);
+                // Передаём объект TableQueryParameters (а не ->toArray()), чтобы до
+                // DatabaseService дошла спецификация подзапроса для active_id.
+                $stream = $this->databaseService->streamUserData($table, $params, $connectionName);
 
                 $this->backupProcessor->appendUserData($table, $stream);
             }

@@ -11,6 +11,7 @@ use App\Services\BackupProcessor;
 use App\Services\DatabaseService;
 use App\Services\FileStorageService;
 use App\Services\UserBackupService;
+use App\ValueObjects\TableQueryParameters;
 use App\ValueObjects\UserBackupCreateOptions;
 use Generator;
 use Illuminate\Database\Connection;
@@ -41,6 +42,19 @@ class UserBackupServiceTest extends TestCase
         Mockery::close();
         $this->cleanupBackups();
         parent::tearDown();
+    }
+
+    /**
+     * Mockery-матчер: аргумент — TableQueryParameters с ожидаемым набором литеральных фильтров.
+     * UserBackupService передаёт в streamUserData объект (а не массив), чтобы донести спецификацию подзапроса.
+     *
+     * @param array<string, array<int, int|string>> $expected
+     */
+    private function paramsMatching(array $expected): \Mockery\Matcher\Closure
+    {
+        return Mockery::on(static function ($params) use ($expected): bool {
+            return $params instanceof TableQueryParameters && $params->toArray() === $expected;
+        });
     }
 
     public function test_backup_streams_and_saves_without_encryption(): void
@@ -149,11 +163,11 @@ class UserBackupServiceTest extends TestCase
         $databaseService->shouldReceive('getConnections')->once()->andReturn(['testing']);
         $databaseService->shouldReceive('streamUserData')
             ->once()
-            ->with('users', ['id' => [42]], 'testing')
+            ->with('users', $this->paramsMatching(['id' => [42]]), 'testing')
             ->andReturn($usersStream);
         $databaseService->shouldReceive('streamUserData')
             ->once()
-            ->with('positions', ['user_id' => [42], 'account_id' => [1001], 'active_id' => [501]], 'testing')
+            ->with('positions', $this->paramsMatching(['user_id' => [42], 'account_id' => [1001], 'active_id' => [501]]), 'testing')
             ->andReturn($positionsStream);
 
         $backupProcessor->shouldReceive('clearUserData')->once();
@@ -252,7 +266,7 @@ class UserBackupServiceTest extends TestCase
         $stream = $this->makeGenerator([['id' => 1]]);
         $databaseService->shouldReceive('streamUserData')
             ->once()
-            ->with('users', ['id' => [1]], 'testing')
+            ->with('users', $this->paramsMatching(['id' => [1]]), 'testing')
             ->andReturn($stream);
 
         $fileStorageService->shouldReceive('saveToFile')
@@ -339,7 +353,7 @@ class UserBackupServiceTest extends TestCase
         $stream = $this->makeGenerator([['id' => 7]]);
 
         $databaseService->shouldReceive('getConnections')->once()->andReturn(['mysql']);
-        $databaseService->shouldReceive('streamUserData')->once()->with('users', ['id' => [7]], 'mysql')->andReturn($stream);
+        $databaseService->shouldReceive('streamUserData')->once()->with('users', $this->paramsMatching(['id' => [7]]), 'mysql')->andReturn($stream);
 
         $backupProcessor->shouldReceive('clearUserData')->once();
         $backupProcessor->shouldReceive('appendUserData')->once()->with('users', $stream);

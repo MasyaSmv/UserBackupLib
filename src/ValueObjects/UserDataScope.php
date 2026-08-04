@@ -17,6 +17,13 @@ final class UserDataScope
     private FilterValues $activeIds;
 
     /**
+     * Необязательная спецификация подзапроса для поля active_id. Если задана и целевая
+     * таблица доступна в подключении, вместо whereIn([десятки тысяч литералов]) будет
+     * использован коррелированный подзапрос. Литеральный $activeIds сохраняется как fallback.
+     */
+    private ?FilterSubquery $activeIdSubquery;
+
+    /**
      * @var array<int, string>
      */
     private array $ignoredTables;
@@ -30,11 +37,13 @@ final class UserDataScope
         int $userId,
         array $accountIds = [],
         array $activeIds = [],
-        array $ignoredTables = []
+        array $ignoredTables = [],
+        ?FilterSubquery $activeIdSubquery = null
     ) {
         $this->userId = $userId;
         $this->subaccountIds = new FilterValues($accountIds);
         $this->activeIds = new FilterValues($activeIds);
+        $this->activeIdSubquery = $activeIdSubquery;
         $this->ignoredTables = array_values(array_unique(array_map('strval', $ignoredTables)));
     }
 
@@ -79,11 +88,17 @@ final class UserDataScope
             ]);
         }
 
+        $subqueries = [];
+
+        if ($this->activeIdSubquery !== null) {
+            $subqueries['active_id'] = $this->activeIdSubquery;
+        }
+
         return new TableQueryParameters([
             'user_id' => FilterValues::single($this->userId),
             'account_id' => $this->subaccountIds,
             'active_id' => $this->activeIds,
-        ]);
+        ], $subqueries);
     }
 
     public function deletionValuesFor(string $table, string $field): FilterValues

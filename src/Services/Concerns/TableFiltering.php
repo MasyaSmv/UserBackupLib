@@ -76,4 +76,64 @@ trait TableFiltering
     {
         return $params;
     }
+
+    /**
+     * Возвращает имя первичного ключа, пригодного для keyset-пагинации
+     * (`WHERE pk > :last ORDER BY pk LIMIT n`): ровно одна числовая колонка.
+     *
+     * Для составных/строковых/UUID первичных ключей возвращает null — вызывающий код
+     * должен откатиться на OFFSET-пагинацию. Это защищает generic-пакет от таблиц,
+     * где keyset по единственному числовому PK невозможен.
+     */
+    protected function determinePrimaryKey(string $table, string $connectionName): ?string
+    {
+        $connection = DB::connection($connectionName);
+        $driver = $connection->getDriverName();
+
+        if ($driver === 'sqlite') {
+            $columns = $connection->select(
+                'PRAGMA table_info(' . $connection->getPdo()->quote($table) . ')'
+            );
+
+            $primary = array_values(array_filter($columns, static function ($column) {
+                return (int) $column->pk > 0;
+            }));
+
+            if (count($primary) !== 1) {
+                return null;
+            }
+
+            return $this->isNumericColumnType((string) $primary[0]->type)
+                ? (string) $primary[0]->name
+                : null;
+        }
+
+        // MySQL, MariaDB
+        $database = $connection->getDatabaseName();
+        $primary = $connection->select(
+            'SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS '
+            . 'WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_KEY = ?',
+            [$database, $table, 'PRI'],
+        );
+
+        if (count($primary) !== 1) {
+            return null;
+        }
+
+        return $this->isNumericColumnType((string) $primary[0]->DATA_TYPE)
+            ? (string) $primary[0]->COLUMN_NAME
+            : null;
+    }
+
+    private function isNumericColumnType(string $type): bool
+    {
+        // Числовые типы, пригодные для keyset-курсора (монотонный автоинкремент).
+        $numericTypes = ['int', 'integer', 'bigint', 'mediumint', 'smallint', 'tinyint'];
+
+        // Отсекаем размерности/атрибуты: "bigint(20) unsigned" -> "bigint".
+        $normalized = strtolower(trim($type));
+        $normalized = preg_replace('/[\s(].*$/', '', $normalized) ?? $normalized;
+
+        return in_array($normalized, $numericTypes, true);
+    }
 }

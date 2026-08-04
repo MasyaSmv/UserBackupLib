@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Contracts;
 
+use App\ValueObjects\TableQueryParameters;
+
 /**
  * Контракт для работы с многими БД и выборки данных пользователя.
  */
@@ -40,12 +42,21 @@ interface DatabaseServiceInterface
     /**
      * Стримит данные пользователя чанками для снижения потребления памяти.
      *
-     * @param string $table
-     * @param array  $params
-     * @param string $connectionName
-     * @param int    $chunkSize
+     * Пагинация — keyset (lazyById) по числовому первичному ключу; для составных/нечисловых
+     * ключей — chunked-fallback. $params может нести спецификацию подзапроса (active_id),
+     * поэтому принимается как массив (обратная совместимость) или как TableQueryParameters.
+     *
+     * @param string                          $table
+     * @param array|TableQueryParameters      $params
+     * @param string                          $connectionName
+     * @param int                             $chunkSize
      *
      * @return \Generator<array<string, mixed>>
      */
-    public function streamUserData(string $table, array $params, string $connectionName, int $chunkSize = 1000): \Generator;
+    public function streamUserData(
+        string $table,
+        array|TableQueryParameters $params,
+        string $connectionName,
+        int $chunkSize = 5000
+    ): \Generator;
 }

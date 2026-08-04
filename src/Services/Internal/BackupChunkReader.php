@@ -25,7 +25,9 @@ class BackupChunkReader
             throw new FileStorageException("Encrypted file not found: $filePath");
         }
 
-        if (pathinfo($filePath, PATHINFO_EXTENSION) !== 'enc') {
+        $ext = pathinfo($filePath, PATHINFO_EXTENSION);
+
+        if ($ext !== 'enc') {
             $handle = $fileSystem->openForRead($filePath);
 
             try {

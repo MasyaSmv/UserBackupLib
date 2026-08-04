@@ -12,11 +12,18 @@ final class TableQueryParameters
     private array $filters;
 
     /**
-     * @param array<string, FilterValues> $filters
+     * @var array<string, FilterSubquery>
      */
-    public function __construct(array $filters = [])
+    private array $subqueries;
+
+    /**
+     * @param array<string, FilterValues>   $filters
+     * @param array<string, FilterSubquery> $subqueries
+     */
+    public function __construct(array $filters = [], array $subqueries = [])
     {
         $this->filters = $filters;
+        $this->subqueries = $subqueries;
     }
 
     /**
@@ -51,6 +58,11 @@ final class TableQueryParameters
         }
 
         return $this->valuesFor($fallbackField);
+    }
+
+    public function subqueryFor(string $field): ?FilterSubquery
+    {
+        return $this->subqueries[$field] ?? null;
     }
 
     /**

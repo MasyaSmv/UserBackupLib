@@ -5,10 +5,14 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Contracts\DatabaseServiceInterface;
+use App\Contracts\TableFilter;
 use App\Services\Concerns\TableFiltering;
 use App\ValueObjects\ConnectionNames;
+use App\ValueObjects\LiteralFilter;
+use App\ValueObjects\SubqueryFilter;
 use App\ValueObjects\TableQueryParameters;
 use Generator;
+use Illuminate\Database\Schema\Builder as SchemaBuilder;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -17,6 +21,13 @@ use Illuminate\Support\Facades\DB;
 class DatabaseService implements DatabaseServiceInterface
 {
     use TableFiltering;
+
+    /**
+     * Размер чанка по умолчанию. Крупнее исторического значения, т.к. keyset-пагинация
+     * (lazyById) не деградирует с глубиной, а число round-trip к БД — доминирующая
+     * составляющая времени выгрузки при удалённой БД.
+     */
+    public const DEFAULT_CHUNK_SIZE = 5000;
 
     protected ConnectionNames $connections;
 
@@ -57,12 +68,16 @@ class DatabaseService implements DatabaseServiceInterface
      */
     public function streamUserData(
         string $table,
-        array $params,
+        array|TableQueryParameters $params,
         string $connectionName,
-        int $chunkSize = 1000
+        int $chunkSize = self::DEFAULT_CHUNK_SIZE
     ): Generator {
-        $filters = TableQueryParameters::fromArray($params);
-        $schema = DB::connection($connectionName)->getSchemaBuilder();
+        $filters = $params instanceof TableQueryParameters
+            ? $params
+            : TableQueryParameters::fromArray($params);
+
+        $connection = DB::connection($connectionName);
+        $schema = $connection->getSchemaBuilder();
 
         if (!$schema->hasTable($table)) {
             return;
@@ -75,38 +90,56 @@ class DatabaseService implements DatabaseServiceInterface
             return;
         }
 
-        $filterValues = $filters->valuesForWithFallback($field, 'account_id')->toArray();
+        $filter = $this->resolveFilter($filters, $field, $columns, $schema);
 
-        if (empty($filterValues)) {
+        if ($filter->isEmpty()) {
             return;
         }
 
-        $filterValues = $this->prepareParams($field, $columns, $filterValues);
-        $connection = DB::connection($connectionName);
+        $query = $connection->table($table);
+        $filter->applyTo($query, $field);
 
-        $page = 1;
+        $primaryKey = $this->determinePrimaryKey($table, $connectionName);
 
-        do {
-            $chunk = $connection->table($table)
-                ->whereIn($field, $filterValues)
-                ->orderBy($field)
-                ->forPage($page, $chunkSize)
-                ->get();
+        // Keyset-пагинация (lazyById) по числовому PK — не деградирует с глубиной.
+        // Для составных/нечисловых ключей keyset невозможен → chunked-fallback (lazy),
+        // который под капотом использует OFFSET, но такие таблицы в scope невелики.
+        $rows = $primaryKey !== null
+            ? $query->lazyById($chunkSize, $primaryKey)
+            : $query->orderBy($field)->lazy($chunkSize);
 
-            $page++;
-
-            if ($chunk->isEmpty()) {
-                break;
-            }
-
-            foreach ($chunk as $row) {
-                yield (array) $row;
-            }
-        } while ($chunk->count() === $chunkSize);
+        foreach ($rows as $row) {
+            yield (array) $row;
+        }
     }
 
     public function getConnections(): array
     {
         return $this->connections->toArray();
+    }
+
+    /**
+     * Выбирает критерий фильтрации таблицы: коррелированный подзапрос, если для поля
+     * задана спецификация и её таблица доступна в подключении; иначе — литеральный список.
+     */
+    private function resolveFilter(
+        TableQueryParameters $filters,
+        string $field,
+        array $columns,
+        SchemaBuilder $schema
+    ): TableFilter {
+        $subquery = $filters->subqueryFor($field);
+
+        if ($subquery !== null && $schema->hasTable($subquery->table())) {
+            return new SubqueryFilter($subquery);
+        }
+
+        $values = $this->prepareParams(
+            $field,
+            $columns,
+            $filters->valuesForWithFallback($field, 'account_id')->toArray(),
+        );
+
+        return new LiteralFilter($values);
     }
 }
