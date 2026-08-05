@@ -7,7 +7,7 @@
 [![Coverage](https://img.shields.io/badge/Coverage-100%25-brightgreen)](#%D1%82%D0%B5%D1%81%D1%82%D1%8B)
 [![Docs](https://img.shields.io/badge/Docs-user--backup--guide-blue)](docs/user-backup-guide.md)
 [![Wiki](https://img.shields.io/badge/Wiki-GitHub-black?logo=github)](https://github.com/MasyaSmv/UserBackupLib/wiki)
-[![Release](https://img.shields.io/badge/Release-v2.3.0-green)](https://github.com/MasyaSmv/UserBackupLib/releases/tag/v2.3.0)
+[![Release](https://img.shields.io/badge/Release-v2.4.0-green)](https://github.com/MasyaSmv/UserBackupLib/releases/tag/v2.4.0)
 
 Библиотека для резервного копирования пользовательских данных из нескольких баз данных с потоковой записью, чанковым шифрованием и опциональным удалением исходных данных.
 
