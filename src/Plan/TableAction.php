@@ -23,6 +23,15 @@ final class TableAction
     /** Строки не читаются и не удаляются. */
     public const KEEP = 'keep';
 
+    /**
+     * Строки попадают в backup, но не удаляются.
+     *
+     * Нужно для строк, которые восстановление обязано вернуть к состоянию снимка, но
+     * удалять которые нельзя: сама строка `users` при возврате из бэкапа обновляется
+     * upsert-ом, а её удаление оставило бы пользователя без учётной записи в промежутке.
+     */
+    public const BACKUP_ONLY = 'backup_only';
+
     /** Строки остаются, но теряют персональные значения. */
     public const ANONYMIZE = 'anonymize';
 
@@ -32,6 +41,7 @@ final class TableAction
     private const ALL = [
         self::BACKUP_AND_DELETE,
         self::KEEP,
+        self::BACKUP_ONLY,
         self::ANONYMIZE,
         self::DETACH,
     ];
@@ -55,6 +65,11 @@ final class TableAction
     public static function keep(): self
     {
         return new self(self::KEEP);
+    }
+
+    public static function backupOnly(): self
+    {
+        return new self(self::BACKUP_ONLY);
     }
 
     public static function anonymize(): self

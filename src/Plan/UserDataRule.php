@@ -82,6 +82,18 @@ final class UserDataRule
     }
 
     /**
+     * Строки уходят в снимок, но остаются в базе: восстановление вернёт их значения
+     * upsert-ом, а удалять такую строку нельзя.
+     */
+    public static function backupOnly(
+        TableRef $tableRef,
+        Selector $selector,
+        string $primaryKey = 'id'
+    ): self {
+        return new self($tableRef, TableAction::backupOnly(), $selector, $primaryKey);
+    }
+
+    /**
      * @param array<int, string> $columns
      */
     public static function detach(
