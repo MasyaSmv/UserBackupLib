@@ -27,6 +27,11 @@ final class CompiledUserDataPlan
     private ?array $ordered = null;
 
     /**
+     * @var string|null Версия исходного плана у его урезанной копии.
+     */
+    private ?string $sourceVersion = null;
+
+    /**
      * @param array<int, UserDataRule> $rules
      */
     public function __construct(array $rules)
@@ -123,10 +128,48 @@ final class CompiledUserDataPlan
     }
 
     /**
+     * Копия плана без перечисленных таблиц.
+     *
+     * Нужна для таблиц, которых нет в схеме окружения: preflight считает их
+     * предупреждением, а не ошибкой, но исполнитель без этой фильтрации всё равно шёл бы
+     * в несуществующую таблицу и ронял операцию.
+     *
+     * Версия остаётся версией исходного плана: это отпечаток описания, а не схемы
+     * конкретного стенда, иначе один и тот же план получал бы разные версии в разных
+     * окружениях и бэкапы перестали бы сопоставляться.
+     *
+     * @param array<int, string> $tableKeys Ключи вида `connection.table`.
+     */
+    public function withoutTables(array $tableKeys): self
+    {
+        if ($tableKeys === []) {
+            return $this;
+        }
+
+        $excluded = array_flip($tableKeys);
+        $kept = [];
+
+        foreach ($this->rules as $key => $rule) {
+            if (!isset($excluded[$key])) {
+                $kept[] = $rule;
+            }
+        }
+
+        $copy = new self($kept);
+        $copy->sourceVersion = $this->version();
+
+        return $copy;
+    }
+
+    /**
      * Отпечаток состава плана. Пишется в метаданные backup рядом с версией формата.
      */
     public function version(): string
     {
+        if ($this->sourceVersion !== null) {
+            return $this->sourceVersion;
+        }
+
         $parts = [];
 
         foreach ($this->rules as $key => $rule) {

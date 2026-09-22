@@ -45,7 +45,7 @@ final class GuardedPlanRunner
         array $connectionNames,
         RowLimits $limits
     ): ExecutionReport {
-        $this->preflight->check($plan, $connectionNames);
+        $plan = $this->planForSchema($plan, $connectionNames);
 
         if ($limits->hasAny()) {
             $this->guard->check(
@@ -67,8 +67,24 @@ final class GuardedPlanRunner
         ScopeValues $scope,
         array $connectionNames
     ): ExecutionReport {
-        $this->preflight->check($plan, $connectionNames);
+        return $this->executor->execute($this->planForSchema($plan, $connectionNames), $scope, true);
+    }
 
-        return $this->executor->execute($plan, $scope, true);
+    /**
+     * План, урезанный до таблиц, которые в этой схеме действительно есть.
+     *
+     * Набор таблиц отличается между окружениями, и preflight считает это предупреждением:
+     * удалять там всё равно нечего. Без этого шага исполнитель всё равно шёл бы в
+     * отсутствующую таблицу и ронял операцию на первом же запросе (WS-3069).
+     *
+     * @param array<int, string> $connectionNames
+     *
+     * @throws \App\Plan\Exceptions\PlanException
+     */
+    private function planForSchema(CompiledUserDataPlan $plan, array $connectionNames): CompiledUserDataPlan
+    {
+        $report = $this->preflight->check($plan, $connectionNames);
+
+        return $plan->withoutTables($report->tablesMissingInSchema());
     }
 }

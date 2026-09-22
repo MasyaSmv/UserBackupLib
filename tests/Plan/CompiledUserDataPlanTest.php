@@ -142,4 +142,34 @@ class CompiledUserDataPlanTest extends TestCase
             $keys,
         );
     }
+
+    public function test_without_tables_drops_rules_and_keeps_source_version(): void
+    {
+        $plan = new CompiledUserDataPlan([
+            UserDataRule::backupAndDelete(new TableRef('mysql', 'users'), new InScope('id', ScopeKey::user())),
+            UserDataRule::backupAndDelete(
+                new TableRef('mysql', 'oauth_access_tokens'),
+                new InScope('user_id', ScopeKey::user())
+            ),
+        ]);
+
+        $trimmed = $plan->withoutTables(['mysql.oauth_access_tokens']);
+
+        $this->assertTrue($trimmed->has(new TableRef('mysql', 'users')));
+        $this->assertFalse($trimmed->has(new TableRef('mysql', 'oauth_access_tokens')));
+        $this->assertSame(
+            $plan->version(),
+            $trimmed->version(),
+            'Version is a fingerprint of the description, not of one environment schema'
+        );
+    }
+
+    public function test_without_tables_returns_same_instance_when_nothing_to_drop(): void
+    {
+        $plan = new CompiledUserDataPlan([
+            UserDataRule::keep(new TableRef('mysql', 'jobs')),
+        ]);
+
+        $this->assertSame($plan, $plan->withoutTables([]));
+    }
 }
