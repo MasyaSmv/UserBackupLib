@@ -31,12 +31,20 @@ final class ScopeKey
     /** Идентификаторы активов пользователя. */
     public const ACTIVES = 'actives';
 
+    /** Адреса почты пользователя: связь у таблиц подтверждения контакта идёт по ним. */
+    public const EMAILS = 'emails';
+
+    /** Телефоны пользователя: связь у таблиц подтверждения контакта идёт по ним. */
+    public const PHONES = 'phones';
+
     private const ALL = [
         self::USER,
         self::USER_TENANT_KEY,
         self::SUBACCOUNTS,
         self::ACCOUNTS,
         self::ACTIVES,
+        self::EMAILS,
+        self::PHONES,
     ];
 
     private string $value;
@@ -73,6 +81,16 @@ final class ScopeKey
     public static function actives(): self
     {
         return new self(self::ACTIVES);
+    }
+
+    public static function emails(): self
+    {
+        return new self(self::EMAILS);
+    }
+
+    public static function phones(): self
+    {
+        return new self(self::PHONES);
     }
 
     public static function fromString(string $value): self

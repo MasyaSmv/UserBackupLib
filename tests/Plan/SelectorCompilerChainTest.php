@@ -62,6 +62,11 @@ class SelectorCompilerChainTest extends TestCase
             $table->increments('id');
             $table->string('user_id');
         });
+
+        Schema::create('email_codes', static function (Blueprint $table): void {
+            $table->increments('id');
+            $table->string('email');
+        });
     }
 
     private function scope(array $values): ScopeValues
@@ -102,6 +107,42 @@ class SelectorCompilerChainTest extends TestCase
         );
 
         $this->assertSame([1, 3], $ids);
+    }
+
+    public function test_contact_scope_selects_rows_bound_by_email_instead_of_user_id(): void
+    {
+        // email_codes и password_resets связаны с человеком почтой: числового user_id у
+        // них нет вовсе, поэтому набор скоупа здесь строковый.
+        DB::table('email_codes')->insert([
+            ['id' => 1, 'email' => 'owner@example.com'],
+            ['id' => 2, 'email' => 'someone.else@example.com'],
+            ['id' => 3, 'email' => 'owner@example.com'],
+        ]);
+
+        $ids = $this->selectIds(
+            'email_codes',
+            new InScope('email', ScopeKey::emails()),
+            $this->scope([ScopeKey::EMAILS => ['owner@example.com']]),
+        );
+
+        $this->assertSame([1, 3], $ids);
+    }
+
+    public function test_empty_contact_scope_leaves_foreign_rows_untouched(): void
+    {
+        // Пользователь без почты не должен уносить чужие коды: пустой набор — пустая
+        // выборка, иначе чистка контактов станет чисткой всей таблицы.
+        DB::table('email_codes')->insert([
+            ['id' => 1, 'email' => 'someone.else@example.com'],
+        ]);
+
+        $ids = $this->selectIds(
+            'email_codes',
+            new InScope('email', ScopeKey::emails()),
+            $this->scope([ScopeKey::EMAILS => []]),
+        );
+
+        $this->assertSame([], $ids);
     }
 
     public function test_empty_scope_selects_nothing_instead_of_everything(): void
