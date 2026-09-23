@@ -28,6 +28,8 @@ final class UserDataRule
      */
     private array $detachColumns;
 
+    private bool $scopeRoot = false;
+
     /**
      * @param Selector|null      $selector      Обязателен для всех действий, кроме keep.
      * @param string|CursorKey   $cursorKey     Уникальный ключ порций; строка — одна колонка.
@@ -100,6 +102,29 @@ final class UserDataRule
         string|CursorKey $cursorKey = 'id'
     ): self {
         return new self($tableRef, TableAction::detach(), $selector, $cursorKey, $columns);
+    }
+
+    /**
+     * Копия правила, помеченная как корень скоупа: таблица, из строк которой выводится сам
+     * скоуп (обычно `users`).
+     *
+     * Такая строка обрабатывается после всех остальных правил плана. Остальные правила
+     * отбирают строки по значениям скоупа и зависимости от корня через селектор не
+     * объявляют, поэтому без метки корень попадал в произвольное место порядка. Общей
+     * транзакции у плана нет: сбой после удаления корня оставлял данные без владельца, и
+     * повторный запуск такую учётную запись уже не находил.
+     */
+    public function asScopeRoot(): self
+    {
+        $copy = clone $this;
+        $copy->scopeRoot = true;
+
+        return $copy;
+    }
+
+    public function isScopeRoot(): bool
+    {
+        return $this->scopeRoot;
     }
 
     public function tableRef(): TableRef

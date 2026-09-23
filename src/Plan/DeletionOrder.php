@@ -16,7 +16,11 @@ use App\Plan\Exceptions\PlanCycleException;
 final class DeletionOrder
 {
     /**
-     * Топологическая сортировка: правило идёт раньше своих родителей.
+     * Топологическая сортировка: правило идёт раньше своих родителей, корень скоупа — после
+     * всех остальных правил.
+     *
+     * Корень, у которого есть родитель в плане, даёт цикл: родитель ждёт корень как своего
+     * потомка, а корень ждёт всех. Такой план описан неверно и отклоняется.
      *
      * @param array<string, UserDataRule> $rules Ключ — TableRef::key().
      *
@@ -67,7 +71,28 @@ final class DeletionOrder
             }
         }
 
+        foreach ($this->scopeRootKeys($rules) as $rootKey) {
+            foreach ($rules as $key => $rule) {
+                if (!$rule->isScopeRoot()) {
+                    $dependents[$rootKey][] = $key;
+                }
+            }
+        }
+
         return $dependents;
+    }
+
+    /**
+     * @param array<string, UserDataRule> $rules
+     *
+     * @return array<int, string>
+     */
+    private function scopeRootKeys(array $rules): array
+    {
+        return array_keys(array_filter(
+            $rules,
+            static fn (UserDataRule $rule): bool => $rule->isScopeRoot(),
+        ));
     }
 
     /**

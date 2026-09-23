@@ -89,6 +89,61 @@ class DeletionOrderTest extends TestCase
         );
     }
 
+    public function test_scope_root_is_processed_after_every_other_rule(): void
+    {
+        $users = new TableRef('mysql', 'users');
+        $actives = new TableRef('mysql', 'actives');
+        $trades = new TableRef('mysql', 'active_trades');
+        $userOwned = new InScope('user_id', ScopeKey::user());
+
+        // Корень передан первым и не связан с остальными через селектор: без метки он
+        // оказался бы в начале порядка.
+        $rules = [
+            $users->key() => UserDataRule::backupAndDelete($users, new InScope('id', ScopeKey::user()))->asScopeRoot(),
+            $actives->key() => UserDataRule::backupAndDelete($actives, $userOwned),
+            $trades->key() => UserDataRule::backupAndDelete(
+                $trades,
+                new ExistsInParent('active_id', $actives, 'id', $userOwned),
+            ),
+        ];
+
+        $keys = array_map(
+            static fn (UserDataRule $rule): string => $rule->tableRef()->key(),
+            (new DeletionOrder())->sort($rules),
+        );
+
+        $this->assertSame(
+            ['mysql.active_trades', 'mysql.actives', 'mysql.users'],
+            $keys,
+            'Корень скоупа обязан удаляться последним: сбой до него оставляет аккаунт находимым',
+        );
+    }
+
+    public function test_scope_root_with_parent_in_plan_is_rejected(): void
+    {
+        $users = new TableRef('mysql', 'users');
+        $accounts = new TableRef('mysql', 'accounts');
+        $userOwned = new InScope('user_id', ScopeKey::user());
+
+        $this->expectException(PlanCycleException::class);
+
+        (new DeletionOrder())->sort([
+            $accounts->key() => UserDataRule::backupAndDelete($accounts, $userOwned),
+            $users->key() => UserDataRule::backupAndDelete(
+                $users,
+                new ExistsInParent('account_id', $accounts, 'id', $userOwned),
+            )->asScopeRoot(),
+        ]);
+    }
+
+    public function test_scope_root_marker_does_not_mutate_the_source_rule(): void
+    {
+        $rule = UserDataRule::backupAndDelete(new TableRef('mysql', 'users'), new InScope('id', ScopeKey::user()));
+
+        $this->assertTrue($rule->asScopeRoot()->isScopeRoot());
+        $this->assertFalse($rule->isScopeRoot(), 'Правило неизменяемо: метка ставится на копию');
+    }
+
     public function test_keep_rules_do_not_constrain_order(): void
     {
         $jobs = new TableRef('mysql', 'jobs');
