@@ -8,7 +8,12 @@ use App\Plan\CompiledUserDataPlan;
 use App\Plan\Exceptions\PlanIncompleteException;
 use App\Plan\Exceptions\RowLimitExceededException;
 use App\Plan\Exceptions\SchemaMismatchException;
+use App\Plan\Compiler\SelectorCompilerChain;
+use App\Plan\Exceptions\UncheckedConnectionException;
+use App\Plan\Exceptions\UnhandledActionException;
+use App\Plan\Exceptions\UnsupportedSelectorException;
 use App\Plan\Execution\GuardedPlanRunner;
+use App\Plan\Execution\PlanCompilationCheck;
 use App\Plan\Execution\PlanExecutor;
 use App\Plan\Execution\RowLimitGuard;
 use App\Plan\Execution\RowLimits;
@@ -16,6 +21,8 @@ use App\Plan\Preflight\PlanPreflight;
 use App\Plan\ScopeKey;
 use App\Plan\ScopeValues;
 use App\Plan\Selector\InScope;
+use App\Plan\Selector\Selector;
+use App\Plan\TableAction;
 use App\Plan\TableRef;
 use App\Plan\UserDataRule;
 use App\ValueObjects\FilterValues;
@@ -61,6 +68,7 @@ class GuardedPlanRunnerTest extends TestCase
 
         return new GuardedPlanRunner(
             new PlanPreflight($resolver),
+            new PlanCompilationCheck($resolver, SelectorCompilerChain::default()),
             PlanExecutor::default($resolver),
             new RowLimitGuard(),
         );
@@ -162,6 +170,181 @@ class GuardedPlanRunnerTest extends TestCase
 
         $this->assertSame(2, $report->totalRows());
         $this->assertSame(1, DB::table('active_goals')->count());
+        $this->assertSame(
+            ['testing.oauth_access_tokens'],
+            $report->skippedTables(),
+            'Урезание плана под схему обязано быть видно в отчёте',
+        );
+        $this->assertSame(['testing.oauth_access_tokens'], $report->toArray()['skipped_tables']);
+    }
+
+    public function test_rule_on_unchecked_connection_stops_the_run_before_any_delete(): void
+    {
+        // Подключение catalog не передано: правила на нём раньше молча выпадали из плана.
+        $plan = new CompiledUserDataPlan([
+            UserDataRule::backupAndDelete(
+                new TableRef(self::CONNECTION, 'active_goals'),
+                new InScope('user_id', ScopeKey::user()),
+            ),
+            UserDataRule::keep(new TableRef(self::CONNECTION, 'api_tokens')),
+            UserDataRule::backupAndDelete(
+                new TableRef('catalog', 'custom_stocks'),
+                new InScope('user_id', ScopeKey::user()),
+            ),
+        ]);
+
+        try {
+            $this->runner()->run($plan, $this->scope(), [self::CONNECTION], RowLimits::unlimited());
+            $this->fail('Ожидалось исключение о непроверенном подключении.');
+        } catch (UncheckedConnectionException $e) {
+            $this->assertSame('user_data_plan.unchecked_connection', $e->errorCode());
+            $this->assertSame(['catalog'], $e->connections());
+            $this->assertSame(['catalog.custom_stocks'], $e->context()['tables']);
+        }
+
+        $this->assertSame(3, DB::table('active_goals')->count(), 'Ни одна строка не должна пострадать');
+    }
+
+    public function test_empty_connection_list_is_not_a_successful_empty_run(): void
+    {
+        $this->expectException(UncheckedConnectionException::class);
+
+        $this->runner()->run($this->fullPlan(), $this->scope(), [], RowLimits::unlimited());
+    }
+
+    public function test_uncompilable_rule_stops_the_run_without_limits(): void
+    {
+        // Лимитов нет, сухого прогона нет — ошибку описания обязана поймать компиляция.
+        $plan = new CompiledUserDataPlan([
+            UserDataRule::backupAndDelete(
+                new TableRef(self::CONNECTION, 'active_goals'),
+                new InScope('user_id', ScopeKey::user()),
+            ),
+            UserDataRule::backupAndDelete(
+                new TableRef(self::CONNECTION, 'api_tokens'),
+                $this->unsupportedSelector(),
+            ),
+        ]);
+
+        try {
+            $this->runner()->run($plan, $this->scope(), [self::CONNECTION], RowLimits::unlimited());
+            $this->fail('Ожидалось исключение о неподдерживаемом селекторе.');
+        } catch (UnsupportedSelectorException $e) {
+            $this->assertSame('user_data_plan.unsupported_selector', $e->errorCode());
+        }
+
+        $this->assertSame(3, DB::table('active_goals')->count());
+        $this->assertSame(1, DB::table('api_tokens')->count());
+    }
+
+    public function test_mutating_action_without_handler_stops_the_run_before_any_delete(): void
+    {
+        $plan = new CompiledUserDataPlan([
+            UserDataRule::backupAndDelete(
+                new TableRef(self::CONNECTION, 'active_goals'),
+                new InScope('user_id', ScopeKey::user()),
+            ),
+            new UserDataRule(
+                new TableRef(self::CONNECTION, 'api_tokens'),
+                TableAction::anonymize(),
+                new InScope('user_id', ScopeKey::user()),
+            ),
+        ]);
+
+        try {
+            $this->runner()->run($plan, $this->scope(), [self::CONNECTION], RowLimits::unlimited());
+            $this->fail('Ожидалось исключение о действии без обработчика.');
+        } catch (UnhandledActionException $e) {
+            $this->assertSame('user_data_plan.unhandled_action', $e->errorCode());
+            $this->assertSame(['testing.api_tokens' => 'anonymize'], $e->actions());
+        }
+
+        $this->assertSame(3, DB::table('active_goals')->count());
+    }
+
+    public function test_detach_rule_requires_cursor_key_column(): void
+    {
+        $plan = new CompiledUserDataPlan([
+            UserDataRule::keep(new TableRef(self::CONNECTION, 'active_goals')),
+            UserDataRule::detach(
+                new TableRef(self::CONNECTION, 'api_tokens'),
+                new InScope('user_id', ScopeKey::user()),
+                ['user_id'],
+                'uuid',
+            ),
+        ]);
+
+        try {
+            $this->runner()->run($plan, $this->scope(), [self::CONNECTION], RowLimits::unlimited());
+            $this->fail('Ожидалось исключение об отсутствующем ключе курсора.');
+        } catch (SchemaMismatchException $e) {
+            $this->assertStringContainsString('uuid', implode('; ', $e->problems()));
+        }
+    }
+
+    public function test_backup_only_rule_requires_cursor_key_column(): void
+    {
+        $rule = UserDataRule::backupOnly(
+            new TableRef(self::CONNECTION, 'api_tokens'),
+            new InScope('user_id', ScopeKey::user()),
+            'uuid',
+        );
+
+        $this->assertContains('uuid', $rule->requiredColumns());
+    }
+
+    public function test_detach_of_not_nullable_column_stops_the_run_before_any_delete(): void
+    {
+        Schema::create('user_notes', static function (Blueprint $table): void {
+            $table->increments('id');
+            $table->integer('user_id');
+        });
+
+        DB::table('user_notes')->insert(['id' => 1, 'user_id' => 42]);
+
+        $plan = new CompiledUserDataPlan([
+            UserDataRule::backupAndDelete(
+                new TableRef(self::CONNECTION, 'active_goals'),
+                new InScope('user_id', ScopeKey::user()),
+            ),
+            UserDataRule::keep(new TableRef(self::CONNECTION, 'api_tokens')),
+            UserDataRule::detach(
+                new TableRef(self::CONNECTION, 'user_notes'),
+                new InScope('user_id', ScopeKey::user()),
+                ['user_id'],
+            ),
+        ]);
+
+        try {
+            $this->runner()->run($plan, $this->scope(), [self::CONNECTION], RowLimits::unlimited());
+            $this->fail('Ожидалось исключение о колонке без NULL.');
+        } catch (SchemaMismatchException $e) {
+            $this->assertStringContainsString('user_notes', implode('; ', $e->problems()));
+            $this->assertStringContainsString('NULL', implode('; ', $e->problems()));
+        }
+
+        $this->assertSame(3, DB::table('active_goals')->count());
+        $this->assertSame(1, DB::table('user_notes')->where('user_id', 42)->count());
+    }
+
+    private function unsupportedSelector(): Selector
+    {
+        return new class implements Selector {
+            public function type(): string
+            {
+                return 'unknown';
+            }
+
+            public function columns(): array
+            {
+                return ['user_id'];
+            }
+
+            public function scopeKeys(): array
+            {
+                return [];
+            }
+        };
     }
 
     public function test_preflight_reports_tables_absent_in_schema(): void

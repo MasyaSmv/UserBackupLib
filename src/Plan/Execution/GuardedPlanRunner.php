@@ -6,6 +6,7 @@ namespace App\Plan\Execution;
 
 use App\Plan\CompiledUserDataPlan;
 use App\Plan\Preflight\PlanPreflight;
+use App\Plan\Preflight\PreflightReport;
 use App\Plan\ScopeValues;
 
 /**
@@ -20,16 +21,20 @@ final class GuardedPlanRunner
 {
     private PlanPreflight $preflight;
 
+    private PlanCompilationCheck $compilation;
+
     private PlanExecutor $executor;
 
     private RowLimitGuard $guard;
 
     public function __construct(
         PlanPreflight $preflight,
+        PlanCompilationCheck $compilation,
         PlanExecutor $executor,
         RowLimitGuard $guard
     ) {
         $this->preflight = $preflight;
+        $this->compilation = $compilation;
         $this->executor = $executor;
         $this->guard = $guard;
     }
@@ -45,7 +50,8 @@ final class GuardedPlanRunner
         array $connectionNames,
         RowLimits $limits
     ): ExecutionReport {
-        $plan = $this->planForSchema($plan, $connectionNames);
+        $preflight = $this->preflight->check($plan, $connectionNames);
+        $plan = $this->executablePlan($plan, $preflight, $scope);
 
         if ($limits->hasAny()) {
             $this->guard->check(
@@ -54,7 +60,9 @@ final class GuardedPlanRunner
             );
         }
 
-        return $this->executor->execute($plan, $scope);
+        return $this->executor
+            ->execute($plan, $scope)
+            ->withSkippedTables($preflight->tablesMissingInSchema());
     }
 
     /**
@@ -67,24 +75,36 @@ final class GuardedPlanRunner
         ScopeValues $scope,
         array $connectionNames
     ): ExecutionReport {
-        return $this->executor->execute($this->planForSchema($plan, $connectionNames), $scope, true);
+        $preflight = $this->preflight->check($plan, $connectionNames);
+
+        return $this->executor
+            ->execute($this->executablePlan($plan, $preflight, $scope), $scope, true)
+            ->withSkippedTables($preflight->tablesMissingInSchema());
     }
 
     /**
-     * План, урезанный до таблиц, которые в этой схеме действительно есть.
+     * План, урезанный до таблиц, которые в этой схеме действительно есть, и проверенный
+     * на исполнимость.
      *
      * Набор таблиц отличается между окружениями, и preflight считает это предупреждением:
-     * удалять там всё равно нечего. Без этого шага исполнитель всё равно шёл бы в
-     * отсутствующую таблицу и ронял операцию на первом же запросе (WS-3069).
+     * удалять там всё равно нечего. Без урезания исполнитель шёл бы в отсутствующую
+     * таблицу и ронял операцию на первом же запросе (WS-3069). Пропущенные таблицы
+     * попадают в отчёт, чтобы урезание не было молчаливым.
      *
-     * @param array<int, string> $connectionNames
+     * Компиляция проверяется всегда, а не только перед сухим прогоном: без лимитов ошибка
+     * описания иначе всплыла бы посреди удаления (WS-3105).
      *
      * @throws \App\Plan\Exceptions\PlanException
      */
-    private function planForSchema(CompiledUserDataPlan $plan, array $connectionNames): CompiledUserDataPlan
-    {
-        $report = $this->preflight->check($plan, $connectionNames);
+    private function executablePlan(
+        CompiledUserDataPlan $plan,
+        PreflightReport $preflight,
+        ScopeValues $scope
+    ): CompiledUserDataPlan {
+        $plan = $plan->withoutTables($preflight->tablesMissingInSchema());
 
-        return $plan->withoutTables($report->tablesMissingInSchema());
+        $this->compilation->assertCompiles($plan, $scope);
+
+        return $plan;
     }
 }

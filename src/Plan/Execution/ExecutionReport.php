@@ -22,6 +22,11 @@ final class ExecutionReport
     private string $planVersion;
 
     /**
+     * @var array<int, string> Таблицы плана, которых нет в схеме этого окружения.
+     */
+    private array $skippedTables = [];
+
+    /**
      * @param array<int, TableExecutionResult> $results
      */
     public function __construct(array $results, bool $dryRun, string $planVersion)
@@ -37,6 +42,30 @@ final class ExecutionReport
     public function results(): array
     {
         return $this->results;
+    }
+
+    /**
+     * Копия отчёта с таблицами, пропущенными из-за отсутствия в схеме.
+     *
+     * Без этого отчёт об успешной операции не отличался бы от отчёта об операции, из
+     * которой выпала часть плана (WS-3105).
+     *
+     * @param array<int, string> $tableKeys
+     */
+    public function withSkippedTables(array $tableKeys): self
+    {
+        $copy = clone $this;
+        $copy->skippedTables = array_values($tableKeys);
+
+        return $copy;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function skippedTables(): array
+    {
+        return $this->skippedTables;
     }
 
     public function isDryRun(): bool
@@ -82,6 +111,7 @@ final class ExecutionReport
             'dry_run' => $this->dryRun,
             'plan_version' => $this->planVersion,
             'total_rows' => $this->totalRows(),
+            'skipped_tables' => $this->skippedTables,
             'tables' => array_map(
                 static fn (TableExecutionResult $result): array => $result->toArray(),
                 $this->touched(),

@@ -27,16 +27,23 @@ final class ConnectionSchema
      */
     private array $numericPrimaryKeys;
 
+    /**
+     * @var array<string, array<string, bool>> table => [column => допускает NULL]
+     */
+    private array $nullable;
+
     private const NUMERIC_TYPES = ['int', 'integer', 'bigint', 'mediumint', 'smallint', 'tinyint'];
 
     /**
      * @param array<string, array<string, string>> $columns
      * @param array<string, string>                $numericPrimaryKeys
+     * @param array<string, array<string, bool>>   $nullable
      */
-    private function __construct(array $columns, array $numericPrimaryKeys)
+    private function __construct(array $columns, array $numericPrimaryKeys, array $nullable)
     {
         $this->columns = $columns;
         $this->numericPrimaryKeys = $numericPrimaryKeys;
+        $this->nullable = $nullable;
     }
 
     public static function load(ConnectionInterface $connection): self
@@ -72,6 +79,14 @@ final class ConnectionSchema
     /**
      * Имя одиночного числового первичного ключа (пригодного для keyset) либо null.
      */
+    /**
+     * Колонка допускает NULL. Для отсутствующей колонки — false: обнулить её нельзя.
+     */
+    public function isNullable(string $table, string $column): bool
+    {
+        return $this->nullable[$table][$column] ?? false;
+    }
+
     public function numericPrimaryKey(string $table): ?string
     {
         return $this->numericPrimaryKeys[$table] ?? null;
@@ -85,7 +100,7 @@ final class ConnectionSchema
         $database = $connection->getDatabaseName();
 
         $rows = $connection->select(
-            'SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE, COLUMN_KEY '
+            'SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE, COLUMN_KEY, IS_NULLABLE '
             . 'FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? '
             . 'ORDER BY TABLE_NAME, ORDINAL_POSITION',
             [$database],
@@ -93,6 +108,7 @@ final class ConnectionSchema
 
         $columns = [];
         $primaryColumns = [];
+        $nullable = [];
 
         foreach ($rows as $row) {
             $table = (string) $row->TABLE_NAME;
@@ -100,13 +116,14 @@ final class ConnectionSchema
             $type = (string) $row->DATA_TYPE;
 
             $columns[$table][$column] = $type;
+            $nullable[$table][$column] = (string) $row->IS_NULLABLE === 'YES';
 
             if ((string) $row->COLUMN_KEY === 'PRI') {
                 $primaryColumns[$table][] = [$column, $type];
             }
         }
 
-        return new self($columns, self::resolveNumericPrimaryKeys($primaryColumns));
+        return new self($columns, self::resolveNumericPrimaryKeys($primaryColumns), $nullable);
     }
 
     /**
@@ -120,6 +137,7 @@ final class ConnectionSchema
 
         $columns = [];
         $primaryColumns = [];
+        $nullable = [];
 
         foreach ($tables as $tableRow) {
             $table = (string) $tableRow->name;
@@ -127,6 +145,7 @@ final class ConnectionSchema
 
             foreach ($info as $column) {
                 $columns[$table][(string) $column->name] = (string) $column->type;
+                $nullable[$table][(string) $column->name] = (int) $column->notnull === 0 && (int) $column->pk === 0;
 
                 if ((int) $column->pk > 0) {
                     $primaryColumns[$table][] = [(string) $column->name, (string) $column->type];
@@ -134,7 +153,7 @@ final class ConnectionSchema
             }
         }
 
-        return new self($columns, self::resolveNumericPrimaryKeys($primaryColumns));
+        return new self($columns, self::resolveNumericPrimaryKeys($primaryColumns), $nullable);
     }
 
     /**

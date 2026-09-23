@@ -104,7 +104,7 @@ final class PlanRowStreams
         while (true) {
             $query = $connection->table($table);
 
-            $this->compiler->apply($query, $selector, $scope, $connectionName);
+            $this->compiler->apply($query, $selector, $scope, $connectionName, $this->compiler);
 
             if ($lastKey !== null) {
                 $query->where($primaryKey, '>', $lastKey);

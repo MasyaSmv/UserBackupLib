@@ -6,6 +6,7 @@ namespace App\Plan\Execution;
 
 use App\Plan\Compiler\SelectorCompilerChain;
 use App\Plan\CompiledUserDataPlan;
+use App\Plan\Exceptions\UnhandledActionException;
 use App\Plan\ScopeValues;
 use App\Plan\UserDataRule;
 use Illuminate\Database\ConnectionResolverInterface;
@@ -74,6 +75,8 @@ final class PlanExecutor
 
     /**
      * @param bool $dryRun Только посчитать строки, ничего не меняя.
+     *
+     * @throws UnhandledActionException Изменяющему действию не нашёлся обработчик.
      */
     public function execute(
         CompiledUserDataPlan $plan,
@@ -82,13 +85,7 @@ final class PlanExecutor
     ): ExecutionReport {
         $results = [];
 
-        foreach ($plan->inDeletionOrder() as $rule) {
-            $handler = $this->handlerFor($rule);
-
-            if ($handler === null) {
-                continue;
-            }
-
+        foreach ($this->assignHandlers($plan) as [$rule, $handler]) {
             $connectionName = $rule->tableRef()->connection();
 
             $rows = $handler->handle(
@@ -108,6 +105,39 @@ final class PlanExecutor
         }
 
         return new ExecutionReport($results, $dryRun, $plan->version());
+    }
+
+    /**
+     * Обработчики для всего плана до первого изменения данных.
+     *
+     * `keep` и `backup_only` исполнителю не принадлежат и пропускаются. Изменяющее
+     * действие без обработчика — ошибка: иначе операция рапортовала бы успех, оставив
+     * строки на месте.
+     *
+     * @return array<int, array{0: UserDataRule, 1: TableActionHandler}>
+     *
+     * @throws UnhandledActionException
+     */
+    private function assignHandlers(CompiledUserDataPlan $plan): array
+    {
+        $assigned = [];
+        $unhandled = [];
+
+        foreach ($plan->inDeletionOrder() as $rule) {
+            $handler = $this->handlerFor($rule);
+
+            if ($handler !== null) {
+                $assigned[] = [$rule, $handler];
+            } elseif ($rule->action()->mutatesRows()) {
+                $unhandled[$rule->tableRef()->key()] = $rule->action()->value();
+            }
+        }
+
+        if ($unhandled !== []) {
+            throw new UnhandledActionException($unhandled);
+        }
+
+        return $assigned;
     }
 
     private function handlerFor(UserDataRule $rule): ?TableActionHandler

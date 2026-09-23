@@ -136,6 +136,10 @@ final class UserDataRule
     /**
      * Колонки, которые обязаны существовать в схеме до начала операции.
      *
+     * Ключ курсора нужен любому действию, которое читает строки порциями: удалению,
+     * обнулению связи и выгрузке `backup_only`. Раньше он требовался только удалению, и
+     * правило `detach` без ключа проходило preflight, а падало уже после чужих удалений.
+     *
      * @return array<int, string>
      */
     public function requiredColumns(): array
@@ -144,13 +148,11 @@ final class UserDataRule
             return [];
         }
 
-        $columns = array_merge($this->selector->columns(), $this->detachColumns);
-
-        if ($this->action->deletesRows()) {
-            $columns[] = $this->primaryKey;
-        }
-
-        return array_values(array_unique($columns));
+        return array_values(array_unique(array_merge(
+            $this->selector->columns(),
+            $this->detachColumns,
+            [$this->primaryKey],
+        )));
     }
 
     /**

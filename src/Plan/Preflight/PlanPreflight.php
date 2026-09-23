@@ -6,6 +6,7 @@ namespace App\Plan\Preflight;
 
 use App\Plan\CompiledUserDataPlan;
 use App\Plan\Exceptions\SchemaMismatchException;
+use App\Plan\Exceptions\UncheckedConnectionException;
 use App\Plan\TableRef;
 use App\Plan\UserDataRule;
 use App\Services\Internal\ConnectionSchema;
@@ -35,11 +36,17 @@ final class PlanPreflight
      * таблицы, которой в этой схеме нет, ошибкой не считается: набор таблиц отличается
      * между окружениями, а удалять там всё равно нечего — такие случаи попадают в отчёт.
      *
+     * Отсутствующим считается только то, чего нет в проверенной схеме. Правило на
+     * подключении, которое не передали, — ошибка вызова, а не различие окружений.
+     *
+     * @throws UncheckedConnectionException                 Правило на непроверенном подключении.
      * @throws \App\Plan\Exceptions\PlanIncompleteException Схема содержит таблицу без правила.
-     * @throws SchemaMismatchException                      Правило ссылается на несуществующую колонку.
+     * @throws SchemaMismatchException                      Правило расходится со схемой.
      */
     public function check(CompiledUserDataPlan $plan, array $connectionNames): PreflightReport
     {
+        $this->assertConnectionsChecked($plan, $connectionNames);
+
         $schemas = $this->loadSchemas($connectionNames);
 
         $plan->assertCovers($this->tablesInSchema($schemas));
@@ -66,6 +73,30 @@ final class PlanPreflight
         }
 
         return new PreflightReport($missingTables);
+    }
+
+    /**
+     * @param array<int, string> $connectionNames
+     *
+     * @throws UncheckedConnectionException
+     */
+    private function assertConnectionsChecked(CompiledUserDataPlan $plan, array $connectionNames): void
+    {
+        $unchecked = [];
+        $tables = [];
+
+        foreach ($plan->rules() as $rule) {
+            $connection = $rule->tableRef()->connection();
+
+            if (!in_array($connection, $connectionNames, true)) {
+                $unchecked[$connection] = $connection;
+                $tables[] = $rule->tableRef()->key();
+            }
+        }
+
+        if ($unchecked !== []) {
+            throw new UncheckedConnectionException(array_values($unchecked), $tables);
+        }
     }
 
     /**
@@ -125,7 +156,10 @@ final class PlanPreflight
         $tableRef = $rule->tableRef();
         $schema = $schemas[$tableRef->connection()];
 
-        $problems = $this->missingColumns($rule, $schema);
+        $problems = array_merge(
+            $this->missingColumns($rule, $schema),
+            $this->notNullableDetachColumns($rule, $schema),
+        );
 
         foreach ($rule->parents() as $parentKey => $parent) {
             $parentSchema = $schemas[$parent->connection()] ?? null;
@@ -134,6 +168,30 @@ final class PlanPreflight
             // просто ничего не найдёт: это ошибка описания, а не различие окружений.
             if ($parentSchema === null || !$parentSchema->hasTable($parent->table())) {
                 $problems[] = $tableRef->key() . ' ссылается на отсутствующего родителя ' . $parentKey;
+            }
+        }
+
+        return $problems;
+    }
+
+    /**
+     * Колонки `detach`, которые нельзя обнулить.
+     *
+     * Ограничение NOT NULL выстрелило бы на UPDATE, когда предыдущие правила уже удалили
+     * свои строки, поэтому ловим его здесь. Отсутствующую колонку уже отметил
+     * `missingColumns`, второй раз её не называем.
+     *
+     * @return array<int, string>
+     */
+    private function notNullableDetachColumns(UserDataRule $rule, ConnectionSchema $schema): array
+    {
+        $table = $rule->tableRef()->table();
+        $existing = $schema->columns($table);
+        $problems = [];
+
+        foreach ($rule->detachColumns() as $column) {
+            if (in_array($column, $existing, true) && !$schema->isNullable($table, $column)) {
+                $problems[] = 'в ' . $rule->tableRef()->key() . ' колонка ' . $column . ' не допускает NULL';
             }
         }
 

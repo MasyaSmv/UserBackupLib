@@ -105,6 +105,16 @@ final class TableAction
         return $this->value !== self::KEEP;
     }
 
+    /**
+     * Действие меняет данные в таблице: у такого действия обязан быть обработчик.
+     *
+     * `backup_only` строки читает, но не меняет: его обрабатывает выгрузка, а не исполнитель.
+     */
+    public function mutatesRows(): bool
+    {
+        return $this->readsRows() && $this->value !== self::BACKUP_ONLY;
+    }
+
     public function deletesRows(): bool
     {
         return $this->value === self::BACKUP_AND_DELETE;
