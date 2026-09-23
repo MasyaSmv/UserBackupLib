@@ -21,7 +21,7 @@ final class UserDataRule
 
     private ?Selector $selector;
 
-    private string $primaryKey;
+    private CursorKey $cursorKey;
 
     /**
      * @var array<int, string> Колонки, обнуляемые действием detach.
@@ -30,13 +30,14 @@ final class UserDataRule
 
     /**
      * @param Selector|null      $selector      Обязателен для всех действий, кроме keep.
+     * @param string|CursorKey   $cursorKey     Уникальный ключ порций; строка — одна колонка.
      * @param array<int, string> $detachColumns Заполняется только для detach.
      */
     public function __construct(
         TableRef $tableRef,
         TableAction $action,
         ?Selector $selector = null,
-        string $primaryKey = 'id',
+        string|CursorKey $cursorKey = 'id',
         array $detachColumns = []
     ) {
         if ($action->readsRows() && $selector === null) {
@@ -57,14 +58,10 @@ final class UserDataRule
             );
         }
 
-        if ($primaryKey === '') {
-            throw new InvalidArgumentException('Первичный ключ не может быть пустым.');
-        }
-
         $this->tableRef = $tableRef;
         $this->action = $action;
         $this->selector = $selector;
-        $this->primaryKey = $primaryKey;
+        $this->cursorKey = CursorKey::from($cursorKey);
         $this->detachColumns = array_values(array_unique($detachColumns));
     }
 
@@ -76,9 +73,9 @@ final class UserDataRule
     public static function backupAndDelete(
         TableRef $tableRef,
         Selector $selector,
-        string $primaryKey = 'id'
+        string|CursorKey $cursorKey = 'id'
     ): self {
-        return new self($tableRef, TableAction::backupAndDelete(), $selector, $primaryKey);
+        return new self($tableRef, TableAction::backupAndDelete(), $selector, $cursorKey);
     }
 
     /**
@@ -88,9 +85,9 @@ final class UserDataRule
     public static function backupOnly(
         TableRef $tableRef,
         Selector $selector,
-        string $primaryKey = 'id'
+        string|CursorKey $cursorKey = 'id'
     ): self {
-        return new self($tableRef, TableAction::backupOnly(), $selector, $primaryKey);
+        return new self($tableRef, TableAction::backupOnly(), $selector, $cursorKey);
     }
 
     /**
@@ -100,9 +97,9 @@ final class UserDataRule
         TableRef $tableRef,
         Selector $selector,
         array $columns,
-        string $primaryKey = 'id'
+        string|CursorKey $cursorKey = 'id'
     ): self {
-        return new self($tableRef, TableAction::detach(), $selector, $primaryKey, $columns);
+        return new self($tableRef, TableAction::detach(), $selector, $cursorKey, $columns);
     }
 
     public function tableRef(): TableRef
@@ -120,9 +117,9 @@ final class UserDataRule
         return $this->selector;
     }
 
-    public function primaryKey(): string
+    public function cursorKey(): CursorKey
     {
-        return $this->primaryKey;
+        return $this->cursorKey;
     }
 
     /**
@@ -151,7 +148,7 @@ final class UserDataRule
         return array_values(array_unique(array_merge(
             $this->selector->columns(),
             $this->detachColumns,
-            [$this->primaryKey],
+            $this->cursorKey->columns(),
         )));
     }
 

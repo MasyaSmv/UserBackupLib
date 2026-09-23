@@ -61,13 +61,14 @@ final class PlanExecutor
         ConnectionResolverInterface $connections,
         int $chunkSize = self::DEFAULT_CHUNK_SIZE
     ): self {
-        $reader = new RowChunkReader(SelectorCompilerChain::default());
+        $keyset = new KeysetCursor();
+        $reader = new RowChunkReader(SelectorCompilerChain::default(), $keyset);
 
         return new self(
             $connections,
             [
-                new DeleteRowsHandler($reader),
-                new DetachRowsHandler($reader),
+                new DeleteRowsHandler($reader, $keyset),
+                new DetachRowsHandler($reader, $keyset),
             ],
             $chunkSize,
         );

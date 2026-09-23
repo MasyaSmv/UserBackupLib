@@ -160,6 +160,7 @@ class PlanRowStreamsTest extends TestCase
         $rows = $this->collect(new PlanRowStreams(
             DB::getFacadeRoot(),
             \App\Plan\Compiler\SelectorCompilerChain::default(),
+            new \App\Plan\Execution\KeysetCursor(),
             10,
         ));
 

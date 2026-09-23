@@ -6,6 +6,7 @@ namespace Tests\Plan;
 
 use App\Plan\Compiler\SelectorCompiler;
 use App\Plan\Compiler\SelectorCompilerChain;
+use App\Plan\Execution\KeysetCursor;
 use App\Plan\Execution\RowChunkReader;
 use App\Plan\ScopeKey;
 use App\Plan\ScopeValues;
@@ -48,7 +49,10 @@ class SelectorCompilerContractTest extends TestCase
 
     public function test_row_reader_passes_root_compiler_to_strict_implementation(): void
     {
-        $reader = new RowChunkReader(new StrictRootCompiler(SelectorCompilerChain::default()));
+        $reader = new RowChunkReader(
+            new StrictRootCompiler(SelectorCompilerChain::default()),
+            new KeysetCursor(),
+        );
 
         $rule = UserDataRule::backupAndDelete(
             new TableRef(self::CONNECTION, 'active_goals'),
@@ -62,7 +66,7 @@ class SelectorCompilerContractTest extends TestCase
             false,
         );
 
-        $this->assertEquals([[1]], $chunks);
+        $this->assertEquals([[['id' => 1]]], $chunks);
     }
 }
 

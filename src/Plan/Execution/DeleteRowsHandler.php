@@ -19,9 +19,12 @@ final class DeleteRowsHandler implements TableActionHandler
 {
     private RowChunkReader $reader;
 
-    public function __construct(RowChunkReader $reader)
+    private KeysetCursor $keyset;
+
+    public function __construct(RowChunkReader $reader, KeysetCursor $keyset)
     {
         $this->reader = $reader;
+        $this->keyset = $keyset;
     }
 
     public function supports(UserDataRule $rule): bool
@@ -39,7 +42,6 @@ final class DeleteRowsHandler implements TableActionHandler
     ): int {
         $affected = 0;
         $table = $rule->tableRef()->table();
-        $primaryKey = $rule->primaryKey();
 
         $chunks = $this->reader->chunks($connection, $connectionName, $rule, $scope, $chunkSize);
 
@@ -50,7 +52,9 @@ final class DeleteRowsHandler implements TableActionHandler
                 continue;
             }
 
-            $affected += $connection->table($table)->whereIn($primaryKey, $keys)->delete();
+            $affected += $this->keyset
+                ->matching($connection->table($table), $rule->cursorKey(), $keys)
+                ->delete();
         }
 
         return $affected;

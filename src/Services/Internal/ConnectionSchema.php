@@ -32,18 +32,25 @@ final class ConnectionSchema
      */
     private array $nullable;
 
+    /**
+     * @var array<string, array<int, array<int, string>>> table => [колонки уникального индекса или PK]
+     */
+    private array $uniqueKeys;
+
     private const NUMERIC_TYPES = ['int', 'integer', 'bigint', 'mediumint', 'smallint', 'tinyint'];
 
     /**
      * @param array<string, array<string, string>> $columns
      * @param array<string, string>                $numericPrimaryKeys
      * @param array<string, array<string, bool>>   $nullable
+     * @param array<string, array<int, array<int, string>>> $uniqueKeys
      */
-    private function __construct(array $columns, array $numericPrimaryKeys, array $nullable)
+    private function __construct(array $columns, array $numericPrimaryKeys, array $nullable, array $uniqueKeys)
     {
         $this->columns = $columns;
         $this->numericPrimaryKeys = $numericPrimaryKeys;
         $this->nullable = $nullable;
+        $this->uniqueKeys = $uniqueKeys;
     }
 
     public static function load(ConnectionInterface $connection): self
@@ -87,6 +94,23 @@ final class ConnectionSchema
         return $this->nullable[$table][$column] ?? false;
     }
 
+    /**
+     * Набор колонок однозначно определяет строку: в него целиком входит первичный ключ
+     * или один из уникальных индексов таблицы.
+     *
+     * @param array<int, string> $columns
+     */
+    public function isUniqueWithin(string $table, array $columns): bool
+    {
+        foreach ($this->uniqueKeys[$table] ?? [] as $uniqueKey) {
+            if (array_diff($uniqueKey, $columns) === []) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public function numericPrimaryKey(string $table): ?string
     {
         return $this->numericPrimaryKeys[$table] ?? null;
@@ -123,7 +147,35 @@ final class ConnectionSchema
             }
         }
 
-        return new self($columns, self::resolveNumericPrimaryKeys($primaryColumns), $nullable);
+        return new self(
+            $columns,
+            self::resolveNumericPrimaryKeys($primaryColumns),
+            $nullable,
+            self::loadInformationSchemaUniqueKeys($connection, $database),
+        );
+    }
+
+    /**
+     * Первичный ключ и уникальные индексы: колонки в порядке индекса.
+     *
+     * @return array<string, array<int, array<int, string>>>
+     */
+    private static function loadInformationSchemaUniqueKeys(ConnectionInterface $connection, string $database): array
+    {
+        $rows = $connection->select(
+            'SELECT TABLE_NAME, INDEX_NAME, COLUMN_NAME '
+            . 'FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = ? AND NON_UNIQUE = 0 '
+            . 'ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX',
+            [$database],
+        );
+
+        $indexes = [];
+
+        foreach ($rows as $row) {
+            $indexes[(string) $row->TABLE_NAME][(string) $row->INDEX_NAME][] = (string) $row->COLUMN_NAME;
+        }
+
+        return array_map('array_values', $indexes);
     }
 
     /**
@@ -153,7 +205,49 @@ final class ConnectionSchema
             }
         }
 
-        return new self($columns, self::resolveNumericPrimaryKeys($primaryColumns), $nullable);
+        return new self(
+            $columns,
+            self::resolveNumericPrimaryKeys($primaryColumns),
+            $nullable,
+            self::loadSqliteUniqueKeys($connection, array_keys($columns), $primaryColumns),
+        );
+    }
+
+    /**
+     * Первичный ключ из `table_info` и уникальные индексы из `index_list`.
+     *
+     * Первичный ключ берётся отдельно: у `INTEGER PRIMARY KEY` в SQLite нет записи в
+     * `index_list`.
+     *
+     * @param array<int, string>                                      $tables
+     * @param array<string, array<int, array{0: string, 1: string}>> $primaryColumns
+     *
+     * @return array<string, array<int, array<int, string>>>
+     */
+    private static function loadSqliteUniqueKeys(ConnectionInterface $connection, array $tables, array $primaryColumns): array
+    {
+        $pdo = $connection->getPdo();
+        $keys = [];
+
+        foreach ($tables as $table) {
+            if (isset($primaryColumns[$table])) {
+                $keys[$table][] = array_column($primaryColumns[$table], 0);
+            }
+
+            foreach ($connection->select('PRAGMA index_list(' . $pdo->quote($table) . ')') as $index) {
+                if ((int) $index->unique !== 1) {
+                    continue;
+                }
+
+                $info = $connection->select('PRAGMA index_info(' . $pdo->quote((string) $index->name) . ')');
+
+                usort($info, static fn ($a, $b): int => (int) $a->seqno <=> (int) $b->seqno);
+
+                $keys[$table][] = array_map(static fn ($column): string => (string) $column->name, $info);
+            }
+        }
+
+        return $keys;
     }
 
     /**

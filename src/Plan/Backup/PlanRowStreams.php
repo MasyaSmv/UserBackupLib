@@ -7,6 +7,7 @@ namespace App\Plan\Backup;
 use App\Plan\Compiler\SelectorCompiler;
 use App\Plan\Compiler\SelectorCompilerChain;
 use App\Plan\CompiledUserDataPlan;
+use App\Plan\Execution\KeysetCursor;
 use App\Plan\ScopeValues;
 use App\Plan\UserDataRule;
 use Generator;
@@ -22,7 +23,7 @@ use InvalidArgumentException;
  * такие строки удалялись и не возвращались из бэкапа никогда.
  *
  * Отдаёт ленивые генераторы: весь бэкап не живёт в памяти целиком, строки читаются
- * порциями по первичному ключу правила.
+ * порциями по ключу курсора правила — тем же, по которому режет удаление.
  */
 final class PlanRowStreams
 {
@@ -32,11 +33,14 @@ final class PlanRowStreams
 
     private SelectorCompiler $compiler;
 
+    private KeysetCursor $keyset;
+
     private int $chunkSize;
 
     public function __construct(
         ConnectionResolverInterface $connections,
         SelectorCompiler $compiler,
+        KeysetCursor $keyset,
         int $chunkSize = self::DEFAULT_CHUNK_SIZE
     ) {
         if ($chunkSize < 1) {
@@ -45,6 +49,7 @@ final class PlanRowStreams
 
         $this->connections = $connections;
         $this->compiler = $compiler;
+        $this->keyset = $keyset;
         $this->chunkSize = $chunkSize;
     }
 
@@ -52,7 +57,7 @@ final class PlanRowStreams
         ConnectionResolverInterface $connections,
         int $chunkSize = self::DEFAULT_CHUNK_SIZE
     ): self {
-        return new self($connections, SelectorCompilerChain::default(), $chunkSize);
+        return new self($connections, SelectorCompilerChain::default(), new KeysetCursor(), $chunkSize);
     }
 
     /**
@@ -95,23 +100,22 @@ final class PlanRowStreams
         $connectionName = $rule->tableRef()->connection();
         $connection = $this->connections->connection($connectionName);
         $table = $rule->tableRef()->table();
-        $primaryKey = $rule->primaryKey();
-        $lastKey = null;
+        $key = $rule->cursorKey();
+        $last = null;
 
-        // Курсор по ключу правила, а не OFFSET: у выгрузки те же требования к глубине,
-        // что и у удаления, а ключ правила уже учитывает таблицы без числового PK
-        // (`password_resets` — по email, `aton_portfolios_aggregated` — по assignment_id).
+        // Курсор по уникальному ключу правила, а не OFFSET и не по первой колонке: у
+        // `aton_portfolios_aggregated` на одну привязку приходится до 69 тысяч строк, и
+        // курсор по `assignment_id` оставлял в бэкапе одну порцию из них (WS-3101).
         while (true) {
             $query = $connection->table($table);
 
             $this->compiler->apply($query, $selector, $scope, $connectionName, $this->compiler);
 
-            if ($lastKey !== null) {
-                $query->where($primaryKey, '>', $lastKey);
+            if ($last !== null) {
+                $this->keyset->after($query, $key, $last);
             }
 
-            $rows = $query
-                ->orderBy($primaryKey)
+            $rows = $this->keyset->order($query, $key)
                 ->limit($this->chunkSize)
                 ->get()
                 ->all();
@@ -124,10 +128,9 @@ final class PlanRowStreams
                 yield (array) $row;
             }
 
-            $last = (array) $rows[count($rows) - 1];
-            $lastKey = $last[$primaryKey] ?? null;
+            $last = $key->valuesOf((array) $rows[count($rows) - 1], $rule->tableRef());
 
-            if ($lastKey === null || count($rows) < $this->chunkSize) {
+            if (count($rows) < $this->chunkSize) {
                 return;
             }
         }

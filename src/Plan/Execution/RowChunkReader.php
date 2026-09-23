@@ -11,26 +11,32 @@ use Generator;
 use Illuminate\Database\ConnectionInterface;
 
 /**
- * Читает первичные ключи строк правила порциями, двигаясь по возрастанию ключа.
+ * Читает ключи строк правила порциями, двигаясь по возрастанию ключа курсора.
  *
  * Именно порции строк, а не порции идентификаторов скоупа: `WHERE user_id IN (2275)` —
  * один элемент в списке, но сотни тысяч строк в таблице, и удаление такой выборки одним
  * запросом держит блокировки до конца транзакции.
  *
  * Курсор по ключу, а не `OFFSET`: удаление сдвигает строки, и постраничный обход с
- * offset пропускал бы каждую вторую порцию.
+ * offset пропускал бы каждую вторую порцию. Ключ уникальный и может быть составным —
+ * иначе граница порции внутри группы одинаковых значений теряла бы строки (WS-3101).
  */
 final class RowChunkReader
 {
     private SelectorCompiler $compiler;
 
-    public function __construct(SelectorCompiler $compiler)
+    private KeysetCursor $keyset;
+
+    public function __construct(SelectorCompiler $compiler, KeysetCursor $keyset)
     {
         $this->compiler = $compiler;
+        $this->keyset = $keyset;
     }
 
     /**
-     * @return Generator<int, array<int, int|string>> Порции значений первичного ключа.
+     * @return Generator<int, array<int, array<string, mixed>>> Порции значений ключа курсора.
+     *
+     * @throws \App\Plan\Exceptions\NullCursorValueException
      */
     public function chunks(
         ConnectionInterface $connection,
@@ -45,31 +51,35 @@ final class RowChunkReader
             return;
         }
 
-        $primaryKey = $rule->primaryKey();
-        $lastKey = null;
+        $key = $rule->cursorKey();
+        $last = null;
 
         while (true) {
             $query = $connection->table($rule->tableRef()->table());
 
             $this->compiler->apply($query, $selector, $scope, $connectionName, $this->compiler);
 
-            if ($lastKey !== null) {
-                $query->where($primaryKey, '>', $lastKey);
+            if ($last !== null) {
+                $this->keyset->after($query, $key, $last);
             }
 
-            $keys = $query
-                ->orderBy($primaryKey)
+            $rows = $this->keyset->order($query, $key)
                 ->limit($chunkSize)
-                ->pluck($primaryKey)
+                ->get($key->columns())
                 ->all();
 
-            if ($keys === []) {
+            if ($rows === []) {
                 return;
             }
 
+            $keys = array_map(
+                static fn ($row): array => $key->valuesOf((array) $row, $rule->tableRef()),
+                $rows,
+            );
+
             yield $keys;
 
-            $lastKey = $keys[count($keys) - 1];
+            $last = $keys[count($keys) - 1];
 
             if (count($keys) < $chunkSize) {
                 return;

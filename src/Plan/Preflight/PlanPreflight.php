@@ -159,6 +159,7 @@ final class PlanPreflight
         $problems = array_merge(
             $this->missingColumns($rule, $schema),
             $this->notNullableDetachColumns($rule, $schema),
+            $this->cursorKeyProblems($rule, $schema),
         );
 
         foreach ($rule->parents() as $parentKey => $parent) {
@@ -168,6 +169,46 @@ final class PlanPreflight
             // просто ничего не найдёт: это ошибка описания, а не различие окружений.
             if ($parentSchema === null || !$parentSchema->hasTable($parent->table())) {
                 $problems[] = $tableRef->key() . ' ссылается на отсутствующего родителя ' . $parentKey;
+            }
+        }
+
+        return $problems;
+    }
+
+    /**
+     * Ключ курсора обязан однозначно определять строку и не содержать NULL.
+     *
+     * Неуникальный ключ режет порцию посреди группы одинаковых значений: выгрузка теряет
+     * остаток группы, а удаление по списку значений уносит её целиком, и бэкап перестаёт
+     * быть точкой восстановления. NULL в ключе не даёт курсору сдвинуться (WS-3101).
+     * Отсутствующие колонки уже отметил `missingColumns`, здесь проверяются только
+     * существующие.
+     *
+     * @return array<int, string>
+     */
+    private function cursorKeyProblems(UserDataRule $rule, ConnectionSchema $schema): array
+    {
+        if ($rule->selector() === null) {
+            return [];
+        }
+
+        $table = $rule->tableRef()->table();
+        $key = $rule->cursorKey();
+
+        if (array_diff($key->columns(), $schema->columns($table)) !== []) {
+            return [];
+        }
+
+        $problems = [];
+
+        if (!$schema->isUniqueWithin($table, $key->columns())) {
+            $problems[] = 'в ' . $rule->tableRef()->key() . ' ключ курсора ' . $key->describe()
+                . ' не покрывает ни первичный ключ, ни уникальный индекс';
+        }
+
+        foreach ($key->columns() as $column) {
+            if ($schema->isNullable($table, $column)) {
+                $problems[] = 'в ' . $rule->tableRef()->key() . ' колонка курсора ' . $column . ' допускает NULL';
             }
         }
 
