@@ -91,12 +91,18 @@ class CompositeCursorTest extends TestCase
      */
     private function backedUpKeys(CompiledUserDataPlan $plan): array
     {
-        $streams = PlanRowStreams::default(DB::getFacadeRoot(), self::CHUNK)->forPlan($plan, $this->scope());
+        $sections = PlanRowStreams::default(DB::getFacadeRoot(), self::CHUNK)->sectionsFor($plan, $this->scope());
         $keys = [];
 
-        foreach ($streams['portfolios_aggregated'] as $stream) {
-            foreach ($stream as $row) {
-                $keys[] = $row['assignment_id'] . '|' . $row['instrument_id'] . '|' . $row['date'];
+        foreach ($sections as $section) {
+            if ($section->table() !== 'portfolios_aggregated') {
+                continue;
+            }
+
+            foreach ($section->sources() as $stream) {
+                foreach ($stream as $row) {
+                    $keys[] = $row['assignment_id'] . '|' . $row['instrument_id'] . '|' . $row['date'];
+                }
             }
         }
 

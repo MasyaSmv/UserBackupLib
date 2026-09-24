@@ -13,6 +13,7 @@ use App\Plan\Selector\ExistsInParent;
 use App\Plan\Selector\InScope;
 use App\Plan\TableRef;
 use App\Plan\UserDataRule;
+use App\ValueObjects\BackupTableSection;
 use App\ValueObjects\FilterValues;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -115,10 +116,11 @@ class PlanRowStreamsTest extends TestCase
     {
         $rows = [];
 
-        foreach ($streams->forPlan($this->plan(), $this->scope()) as $table => $sources) {
-            $rows[$table] = [];
+        foreach ($streams->sectionsFor($this->plan(), $this->scope()) as $section) {
+            $table = $section->table();
+            $rows[$table] = $rows[$table] ?? [];
 
-            foreach ($sources as $source) {
+            foreach ($section->sources() as $source) {
                 foreach ($source as $row) {
                     $rows[$table][] = $row;
                 }
@@ -138,6 +140,21 @@ class PlanRowStreamsTest extends TestCase
         $this->assertSame([1], array_map('intval', array_column($rows['active_goals'], 'id')));
         $this->assertSame([1, 2], array_map('intval', array_column($rows['active_goal_payments'], 'id')));
         $this->assertSame(['owner@example.com'], array_column($rows['password_resets'], 'email'));
+    }
+
+    /**
+     * Подключение едет в файл вместе с таблицей: по нему восстановление вставляет строки,
+     * не угадывая подключение по имени таблицы (WS-3066).
+     */
+    public function testEverySectionCarriesConnectionOfItsRule(): void
+    {
+        $sections = PlanRowStreams::default(DB::getFacadeRoot())->sectionsFor($this->plan(), $this->scope());
+
+        $this->assertNotEmpty($sections);
+
+        foreach ($sections as $section) {
+            $this->assertSame(self::CONNECTION, $section->connection(), $section->table());
+        }
     }
 
     public function testKeepTablesAreNotStreamed(): void
@@ -175,8 +192,10 @@ class PlanRowStreamsTest extends TestCase
     {
         $this->seedRows();
 
-        $tables = array_keys(PlanRowStreams::default(DB::getFacadeRoot())
-            ->forPlan($this->plan(), $this->scope()));
+        $tables = array_map(
+            static fn (BackupTableSection $section): string => $section->table(),
+            PlanRowStreams::default(DB::getFacadeRoot())->sectionsFor($this->plan(), $this->scope()),
+        );
 
         $this->assertLessThan(
             array_search('active_goal_payments', $tables, true),

@@ -6,12 +6,16 @@ namespace App\Services;
 
 use App\Contracts\FileStorageServiceInterface;
 use App\Exceptions\BackupEncryptionException;
-use App\Exceptions\BackupSerializationException;
 use App\Exceptions\FileStorageException;
 use App\Services\Internal\BackupChunkReader;
+use App\Services\Internal\BackupFormatDetector;
+use App\Services\Internal\BackupRowIterator;
 use App\Services\Internal\BackupStreamEntry;
 use App\Services\Internal\FileSystemAdapter;
 use App\Services\Internal\BackupJsonStreamParser;
+use App\Services\Internal\BackupV2JsonStreamParser;
+use App\Services\Internal\BackupV2JsonWriter;
+use App\ValueObjects\BackupHeader;
 use Generator;
 use Illuminate\Support\Facades\Crypt;
 use Throwable;
@@ -49,13 +53,68 @@ class FileStorageService implements FileStorageServiceInterface
         return $data;
     }
 
+    /**
+     * Файл первой версии: без шапки и подключений. Остаётся для старого пути пакета
+     * (`UserBackupService`); бэкапы по плану пишутся через `saveBackup`.
+     */
     public function saveToFile(string $filePath, iterable $data, bool $encrypt = true): string
+    {
+        return $this->writeAtomically($filePath, $encrypt, function ($handle) use ($data): void {
+            $this->writeLegacyJsonStream($handle, $data);
+        });
+    }
+
+    public function saveBackup(string $filePath, BackupHeader $header, iterable $sections, bool $encrypt = true): string
+    {
+        return $this->writeAtomically($filePath, $encrypt, function ($handle) use ($header, $sections): void {
+            $this->createV2Writer()->write($handle, $header, $sections);
+        });
+    }
+
+    public function streamBackupData(string $filePath): Generator
+    {
+        [$format, $chunks] = $this->detectFormat($filePath);
+
+        $parser = $format === BackupHeader::CURRENT_FORMAT ? $this->createV2Parser() : $this->createParser();
+
+        foreach ($parser->parse($chunks, $filePath) as $entry) {
+            /** @var BackupStreamEntry $entry */
+            yield $entry->toArray();
+        }
+    }
+
+    public function readHeader(string $filePath): BackupHeader
+    {
+        [$format, $chunks] = $this->detectFormat($filePath);
+
+        if ($format !== BackupHeader::CURRENT_FORMAT) {
+            return BackupHeader::legacy();
+        }
+
+        return $this->createV2Parser()->header($chunks, $filePath);
+    }
+
+    /**
+     * @return array{0: int, 1: Generator<int, string>}
+     */
+    private function detectFormat(string $filePath): array
+    {
+        return (new BackupFormatDetector())->detect($this->createChunkReader()->iterateDecryptedChunks($filePath));
+    }
+
+    /**
+     * Пишет во временный файл и только потом переименовывает или шифрует: недописанный
+     * бэкап не должен выглядеть как готовый.
+     *
+     * @param callable(resource): void $writer
+     */
+    private function writeAtomically(string $filePath, bool $encrypt, callable $writer): string
     {
         $tempPath = $this->createDirectoryAndTempFile($filePath);
         $tempHandle = $this->fileSystem()->openForWrite($tempPath);
 
         try {
-            $this->writeJsonStream($tempHandle, $data);
+            $writer($tempHandle);
         } finally {
             $this->fileSystem()->close($tempHandle);
         }
@@ -72,22 +131,11 @@ class FileStorageService implements FileStorageServiceInterface
         return $filePath;
     }
 
-    public function streamBackupData(string $filePath): Generator
-    {
-        foreach ($this->createParser()->parse(
-            $this->createChunkReader()->iterateDecryptedChunks($filePath),
-            $filePath,
-        ) as $entry) {
-            /** @var BackupStreamEntry $entry */
-            yield $entry->toArray();
-        }
-    }
-
     /**
      * @param resource $handle
      * @param iterable<string, iterable> $data
      */
-    private function writeJsonStream($handle, iterable $data): void
+    private function writeLegacyJsonStream($handle, iterable $data): void
     {
         $this->writeChunk($handle, '{');
 
@@ -95,32 +143,19 @@ class FileStorageService implements FileStorageServiceInterface
 
         foreach ($data as $table => $tableChunks) {
             $tableStarted = false;
-            $isFirstRow = true;
 
-            foreach ($this->iterateTableRows($tableChunks) as $row) {
+            foreach ((new BackupRowIterator())->encodedRows($tableChunks) as $encodedRow) {
                 // Заголовок секции пишем ЛЕНИВО — только при первой строке. Таблицы без
                 // строк вообще не попадают в файл: восстанавливать в них нечего, а мы
                 // экономим на записи и на разборе при restore.
                 if (!$tableStarted) {
-                    if (!$isFirstTable) {
-                        $this->writeChunk($handle, ',');
-                    }
-
-                    $this->writeChunk($handle, json_encode((string) $table, JSON_UNESCAPED_UNICODE) . ':[');
+                    $this->writeChunk($handle, ($isFirstTable ? '' : ',') . json_encode((string) $table, JSON_UNESCAPED_UNICODE) . ':[');
                     $tableStarted = true;
-                }
-
-                if (!$isFirstRow) {
+                } else {
                     $this->writeChunk($handle, ',');
                 }
 
-                $encodedRow = json_encode($row, JSON_UNESCAPED_UNICODE);
-                if ($encodedRow === false) {
-                    throw new BackupSerializationException('Failed to encode backup row to JSON: ' . json_last_error_msg());
-                }
-
                 $this->writeChunk($handle, $encodedRow);
-                $isFirstRow = false;
             }
 
             if ($tableStarted) {
@@ -130,32 +165,6 @@ class FileStorageService implements FileStorageServiceInterface
         }
 
         $this->writeChunk($handle, '}');
-    }
-
-    /**
-     * @param iterable $tableChunks
-     * @return iterable<array|\JsonSerializable|scalar|null>
-     */
-    private function iterateTableRows(iterable $tableChunks): iterable
-    {
-        foreach ($tableChunks as $chunk) {
-            if (is_iterable($chunk)) {
-                foreach ($chunk as $row) {
-                    yield $this->normalizeRow($row);
-                }
-            } else {
-                yield $this->normalizeRow($chunk);
-            }
-        }
-    }
-
-    private function normalizeRow($row)
-    {
-        if (is_object($row)) {
-            return (array) $row;
-        }
-
-        return $row;
     }
 
     private function writeChunk($handle, string $chunk): void
@@ -217,6 +226,16 @@ class FileStorageService implements FileStorageServiceInterface
     protected function createParser(): BackupJsonStreamParser
     {
         return new BackupJsonStreamParser();
+    }
+
+    protected function createV2Parser(): BackupV2JsonStreamParser
+    {
+        return new BackupV2JsonStreamParser();
+    }
+
+    protected function createV2Writer(): BackupV2JsonWriter
+    {
+        return new BackupV2JsonWriter($this->fileSystem(), new BackupRowIterator());
     }
 
     protected function encryptChunk(string $chunk, string $encryptedPath): string

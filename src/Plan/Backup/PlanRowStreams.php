@@ -10,6 +10,7 @@ use App\Plan\CompiledUserDataPlan;
 use App\Plan\Execution\KeysetCursor;
 use App\Plan\ScopeValues;
 use App\Plan\UserDataRule;
+use App\ValueObjects\BackupTableSection;
 use Generator;
 use Illuminate\Database\ConnectionResolverInterface;
 use InvalidArgumentException;
@@ -61,29 +62,28 @@ final class PlanRowStreams
     }
 
     /**
-     * Потоки строк в формате выгрузки: имя таблицы → список ленивых источников.
+     * Секции выгрузки: по одной на читаемое правило, с подключением и таблицей.
      *
-     * Таблица, а не пара с подключением: файл бэкапа исторически ключуется именем, а
-     * подключение при восстановлении определяет резолвер. Одноимённые таблицы двух
-     * подключений поэтому дописываются в один ключ.
+     * Подключение записывается в файл вместе с таблицей: раньше файл ключевался одним
+     * именем, и восстановление угадывало подключение, а одноимённые таблицы двух
+     * подключений сливались в один ключ.
      *
      * Порядок — обратный порядку удаления, то есть родители раньше детей. Восстановление
      * читает файл сверху вниз и вставляет строки в том же порядке: дочерняя строка,
      * записанная раньше родителя, упирается во внешний ключ.
      *
-     * @return array<string, array<int, iterable<int, array<string, mixed>>>>
+     * @return array<int, BackupTableSection>
      */
-    public function forPlan(CompiledUserDataPlan $plan, ScopeValues $scope): array
+    public function sectionsFor(CompiledUserDataPlan $plan, ScopeValues $scope): array
     {
-        $streams = [];
-
-        foreach (array_reverse($plan->readable()) as $rule) {
-            $table = $rule->tableRef()->table();
-
-            $streams[$table][] = $this->rowsOf($rule, $scope);
-        }
-
-        return $streams;
+        return array_map(
+            fn (UserDataRule $rule): BackupTableSection => new BackupTableSection(
+                $rule->tableRef()->connection(),
+                $rule->tableRef()->table(),
+                [$this->rowsOf($rule, $scope)],
+            ),
+            array_reverse($plan->readable()),
+        );
     }
 
     /**
