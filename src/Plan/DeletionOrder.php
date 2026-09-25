@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Plan;
+namespace UserDataBackup\Plan;
 
-use App\Plan\Exceptions\PlanCycleException;
+use UserDataBackup\Plan\Exceptions\PlanCycleException;
 
 /**
  * Упорядочивает правила так, чтобы дочерние строки удалялись раньше родительских.

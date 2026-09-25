@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Plan;
+namespace UserDataBackup\Plan;
 
-use App\Plan\Exceptions\NullCursorValueException;
+use UserDataBackup\Plan\Exceptions\NullCursorValueException;
 use InvalidArgumentException;
 
 /**

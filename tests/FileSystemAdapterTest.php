@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Tests;
 
-use App\Exceptions\BackupFileCloseException;
-use App\Exceptions\BackupWriteIncompleteException;
-use App\Exceptions\FileStorageException;
-use App\Services\Internal\FileSystemAdapter;
+use UserDataBackup\Exceptions\BackupFileCloseException;
+use UserDataBackup\Exceptions\BackupWriteIncompleteException;
+use UserDataBackup\Exceptions\FileStorageException;
+use UserDataBackup\Services\Internal\FileSystemAdapter;
 use PHPUnit\Framework\TestCase;
 
 class FileSystemAdapterTest extends TestCase

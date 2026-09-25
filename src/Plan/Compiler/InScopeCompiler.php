@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace App\Plan\Compiler;
+namespace UserDataBackup\Plan\Compiler;
 
-use App\Plan\ScopeValues;
-use App\Plan\Selector\InScope;
-use App\Plan\Selector\Selector;
+use UserDataBackup\Plan\ScopeValues;
+use UserDataBackup\Plan\Selector\InScope;
+use UserDataBackup\Plan\Selector\Selector;
 use Illuminate\Database\Query\Builder;
 
 /**

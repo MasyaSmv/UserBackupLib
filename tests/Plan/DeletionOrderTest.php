@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace Tests\Plan;
 
-use App\Plan\Exceptions\PlanCycleException;
-use App\Plan\DeletionOrder;
-use App\Plan\ScopeKey;
-use App\Plan\Selector\ExistsInParent;
-use App\Plan\Selector\InScope;
-use App\Plan\TableAction;
-use App\Plan\TableRef;
-use App\Plan\UserDataRule;
+use UserDataBackup\Plan\Exceptions\PlanCycleException;
+use UserDataBackup\Plan\DeletionOrder;
+use UserDataBackup\Plan\ScopeKey;
+use UserDataBackup\Plan\Selector\ExistsInParent;
+use UserDataBackup\Plan\Selector\InScope;
+use UserDataBackup\Plan\TableAction;
+use UserDataBackup\Plan\TableRef;
+use UserDataBackup\Plan\UserDataRule;
 use PHPUnit\Framework\TestCase;
 
 class DeletionOrderTest extends TestCase

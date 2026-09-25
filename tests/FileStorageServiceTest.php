@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Tests;
 
-use App\Exceptions\BackupEncryptionException;
-use App\Exceptions\BackupFormatException;
-use App\Exceptions\BackupSerializationException;
-use App\Exceptions\FileStorageException;
-use App\Services\FileStorageService;
+use UserDataBackup\Exceptions\BackupEncryptionException;
+use UserDataBackup\Exceptions\BackupFormatException;
+use UserDataBackup\Exceptions\BackupSerializationException;
+use UserDataBackup\Exceptions\FileStorageException;
+use UserDataBackup\Services\FileStorageService;
 use Illuminate\Support\Facades\Crypt;
 use RuntimeException;
 
@@ -391,13 +391,13 @@ class FileStorageServiceTest extends TestCase
             }
         };
 
-        $this->assertInstanceOf(\App\Services\Internal\BackupChunkReader::class, $service->reader());
-        $this->assertInstanceOf(\App\Services\Internal\BackupJsonStreamParser::class, $service->parser());
+        $this->assertInstanceOf(\UserDataBackup\Services\Internal\BackupChunkReader::class, $service->reader());
+        $this->assertInstanceOf(\UserDataBackup\Services\Internal\BackupJsonStreamParser::class, $service->parser());
     }
 
     public function test_save_to_file_handles_empty_read_chunk_during_encryption(): void
     {
-        $adapter = new class extends \App\Services\Internal\FileSystemAdapter {
+        $adapter = new class extends \UserDataBackup\Services\Internal\FileSystemAdapter {
             public array $written = [];
 
             public function ensureDirectory(string $directoryPath): void
@@ -539,7 +539,7 @@ class FileStorageServiceTest extends TestCase
 
     public function test_failed_write_leaves_neither_temp_nor_final_file(): void
     {
-        $adapter = new class extends \App\Services\Internal\FileSystemAdapter {
+        $adapter = new class extends \UserDataBackup\Services\Internal\FileSystemAdapter {
             public function openForWrite(string $path)
             {
                 // Настоящее устройство без места: любой fwrite падает с ENOSPC.
@@ -553,8 +553,8 @@ class FileStorageServiceTest extends TestCase
         try {
             (new FileStorageService($adapter))->saveToFile($path, ['users' => [['id' => 1]]], false);
             $this->fail('Expected exception was not thrown.');
-        } catch (\App\Exceptions\BackupWriteIncompleteException $exception) {
-            $this->assertSame(\App\Exceptions\BackupWriteIncompleteException::CODE, $exception->errorCode());
+        } catch (\UserDataBackup\Exceptions\BackupWriteIncompleteException $exception) {
+            $this->assertSame(\UserDataBackup\Exceptions\BackupWriteIncompleteException::CODE, $exception->errorCode());
         }
 
         $this->assertSame([], glob($this->baseDir . DIRECTORY_SEPARATOR . 'no-space.json*'));

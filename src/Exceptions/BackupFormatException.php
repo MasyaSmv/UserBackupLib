@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Exceptions;
+namespace UserDataBackup\Exceptions;
 
 class BackupFormatException extends BackupException
 {

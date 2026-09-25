@@ -4,16 +4,16 @@ declare(strict_types=1);
 
 namespace Tests\Plan;
 
-use App\Plan\ScopeKey;
-use App\Plan\Selector\AnyOf;
-use App\Plan\Selector\Equals;
-use App\Plan\Selector\ExistsInParent;
-use App\Plan\Selector\InScope;
-use App\Plan\Selector\MorphBranch;
-use App\Plan\Selector\MorphReference;
-use App\Plan\TableAction;
-use App\Plan\TableRef;
-use App\Plan\UserDataRule;
+use UserDataBackup\Plan\ScopeKey;
+use UserDataBackup\Plan\Selector\AnyOf;
+use UserDataBackup\Plan\Selector\Equals;
+use UserDataBackup\Plan\Selector\ExistsInParent;
+use UserDataBackup\Plan\Selector\InScope;
+use UserDataBackup\Plan\Selector\MorphBranch;
+use UserDataBackup\Plan\Selector\MorphReference;
+use UserDataBackup\Plan\TableAction;
+use UserDataBackup\Plan\TableRef;
+use UserDataBackup\Plan\UserDataRule;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 

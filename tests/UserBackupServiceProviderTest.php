@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Tests;
 
-use App\Contracts\FileStorageServiceInterface;
-use App\Services\FileStorageService;
+use UserDataBackup\Contracts\FileStorageServiceInterface;
+use UserDataBackup\Services\FileStorageService;
 
 class UserBackupServiceProviderTest extends TestCase
 {

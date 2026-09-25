@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests;
 
-use App\ValueObjects\FilterValues;
+use UserDataBackup\ValueObjects\FilterValues;
 use PHPUnit\Framework\TestCase;
 
 class FilterValuesTest extends TestCase

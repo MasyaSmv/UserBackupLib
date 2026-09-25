@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace App\Plan\Backup;
+namespace UserDataBackup\Plan\Backup;
 
-use App\Plan\Compiler\SelectorCompiler;
-use App\Plan\Compiler\SelectorCompilerChain;
-use App\Plan\CompiledUserDataPlan;
-use App\Plan\Execution\KeysetCursor;
-use App\Plan\ScopeValues;
-use App\Plan\UserDataRule;
-use App\ValueObjects\BackupTableSection;
+use UserDataBackup\Plan\Compiler\SelectorCompiler;
+use UserDataBackup\Plan\Compiler\SelectorCompilerChain;
+use UserDataBackup\Plan\CompiledUserDataPlan;
+use UserDataBackup\Plan\Execution\KeysetCursor;
+use UserDataBackup\Plan\ScopeValues;
+use UserDataBackup\Plan\UserDataRule;
+use UserDataBackup\ValueObjects\BackupTableSection;
 use Generator;
 use Illuminate\Database\ConnectionResolverInterface;
 use InvalidArgumentException;

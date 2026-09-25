@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Plan\Preflight;
+namespace UserDataBackup\Plan\Preflight;
 
 /**
  * Итог сверки плана со схемой.

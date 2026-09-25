@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Plan;
+namespace UserDataBackup\Plan;
 
-use App\ValueObjects\FilterValues;
+use UserDataBackup\ValueObjects\FilterValues;
 use InvalidArgumentException;
 
 /**

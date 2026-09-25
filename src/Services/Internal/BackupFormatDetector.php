@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Services\Internal;
+namespace UserDataBackup\Services\Internal;
 
-use App\ValueObjects\BackupHeader;
+use UserDataBackup\ValueObjects\BackupHeader;
 use Generator;
 use Iterator;
 

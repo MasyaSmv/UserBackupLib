@@ -35,7 +35,7 @@
 ## Чтение
 
 ```php
-use App\Contracts\FileStorageServiceInterface;
+use UserDataBackup\Contracts\FileStorageServiceInterface;
 
 $storage = app(FileStorageServiceInterface::class);
 

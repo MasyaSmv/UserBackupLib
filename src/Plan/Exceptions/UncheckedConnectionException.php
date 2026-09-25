@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Plan\Exceptions;
+namespace UserDataBackup\Plan\Exceptions;
 
 /**
  * Правила плана ссылаются на подключения, которые не были переданы на проверку.

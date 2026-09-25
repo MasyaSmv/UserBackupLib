@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Plan\Execution;
+namespace UserDataBackup\Plan\Execution;
 
 use InvalidArgumentException;
 

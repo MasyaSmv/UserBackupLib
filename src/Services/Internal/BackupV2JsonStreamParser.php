@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Services\Internal;
+namespace UserDataBackup\Services\Internal;
 
-use App\Exceptions\BackupFormatException;
-use App\ValueObjects\BackupHeader;
+use UserDataBackup\Exceptions\BackupFormatException;
+use UserDataBackup\ValueObjects\BackupHeader;
 use Generator;
 
 /**

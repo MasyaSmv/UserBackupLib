@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace Tests;
 
-use App\Exceptions\BackupFormatException;
-use App\Services\FileStorageService;
-use App\Services\Internal\BackupFormatDetector;
-use App\Services\Internal\BackupV2JsonStreamParser;
-use App\ValueObjects\BackupHeader;
-use App\ValueObjects\BackupTableSection;
+use UserDataBackup\Exceptions\BackupFormatException;
+use UserDataBackup\Services\FileStorageService;
+use UserDataBackup\Services\Internal\BackupFormatDetector;
+use UserDataBackup\Services\Internal\BackupV2JsonStreamParser;
+use UserDataBackup\ValueObjects\BackupHeader;
+use UserDataBackup\ValueObjects\BackupTableSection;
 
 /**
  * Формат бэкапа второй версии: шапка с версиями и tenant, подключение у каждой секции,

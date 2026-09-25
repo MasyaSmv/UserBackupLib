@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Plan\Selector;
+namespace UserDataBackup\Plan\Selector;
 
 use InvalidArgumentException;
 

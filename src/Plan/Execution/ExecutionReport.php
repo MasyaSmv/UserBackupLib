@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Plan\Execution;
+namespace UserDataBackup\Plan\Execution;
 
 /**
  * Итог исполнения плана: сколько строк и в каких таблицах затронуто.

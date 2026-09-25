@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Tests;
 
-use App\Exceptions\BackupDecryptionException;
-use App\Services\Internal\BackupChunkReader;
+use UserDataBackup\Exceptions\BackupDecryptionException;
+use UserDataBackup\Services\Internal\BackupChunkReader;
 use RuntimeException;
 
 class BackupChunkReaderTest extends TestCase

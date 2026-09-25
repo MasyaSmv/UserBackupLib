@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace Tests\Plan;
 
-use App\Plan\CompiledUserDataPlan;
-use App\Plan\Exceptions\PlanIncompleteException;
-use App\Plan\ScopeKey;
-use App\Plan\Selector\ExistsInParent;
-use App\Plan\Selector\InScope;
-use App\Plan\TableRef;
-use App\Plan\UserDataRule;
+use UserDataBackup\Plan\CompiledUserDataPlan;
+use UserDataBackup\Plan\Exceptions\PlanIncompleteException;
+use UserDataBackup\Plan\ScopeKey;
+use UserDataBackup\Plan\Selector\ExistsInParent;
+use UserDataBackup\Plan\Selector\InScope;
+use UserDataBackup\Plan\TableRef;
+use UserDataBackup\Plan\UserDataRule;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 

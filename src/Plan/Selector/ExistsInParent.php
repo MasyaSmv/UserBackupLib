@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Plan\Selector;
+namespace UserDataBackup\Plan\Selector;
 
-use App\Plan\TableRef;
+use UserDataBackup\Plan\TableRef;
 use InvalidArgumentException;
 
 /**
@@ -89,7 +89,7 @@ final class ExistsInParent implements Selector
     }
 
     /**
-     * @return array<int, \App\Plan\ScopeKey>
+     * @return array<int, \UserDataBackup\Plan\ScopeKey>
      */
     public function scopeKeys(): array
     {

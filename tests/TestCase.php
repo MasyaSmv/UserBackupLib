@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests;
 
-use App\UserBackupServiceProvider;
+use UserDataBackup\UserBackupServiceProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
 
 /**

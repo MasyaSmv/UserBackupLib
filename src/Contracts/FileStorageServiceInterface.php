@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Contracts;
+namespace UserDataBackup\Contracts;
 
-use App\ValueObjects\BackupHeader;
-use App\ValueObjects\BackupTableSection;
+use UserDataBackup\ValueObjects\BackupHeader;
+use UserDataBackup\ValueObjects\BackupTableSection;
 use Generator;
 
 /**

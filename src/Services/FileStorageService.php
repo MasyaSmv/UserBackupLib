@@ -2,20 +2,20 @@
 
 declare(strict_types=1);
 
-namespace App\Services;
+namespace UserDataBackup\Services;
 
-use App\Contracts\FileStorageServiceInterface;
-use App\Exceptions\BackupEncryptionException;
-use App\Exceptions\FileStorageException;
-use App\Services\Internal\BackupChunkReader;
-use App\Services\Internal\BackupFormatDetector;
-use App\Services\Internal\BackupRowIterator;
-use App\Services\Internal\BackupStreamEntry;
-use App\Services\Internal\FileSystemAdapter;
-use App\Services\Internal\BackupJsonStreamParser;
-use App\Services\Internal\BackupV2JsonStreamParser;
-use App\Services\Internal\BackupV2JsonWriter;
-use App\ValueObjects\BackupHeader;
+use UserDataBackup\Contracts\FileStorageServiceInterface;
+use UserDataBackup\Exceptions\BackupEncryptionException;
+use UserDataBackup\Exceptions\FileStorageException;
+use UserDataBackup\Services\Internal\BackupChunkReader;
+use UserDataBackup\Services\Internal\BackupFormatDetector;
+use UserDataBackup\Services\Internal\BackupRowIterator;
+use UserDataBackup\Services\Internal\BackupStreamEntry;
+use UserDataBackup\Services\Internal\FileSystemAdapter;
+use UserDataBackup\Services\Internal\BackupJsonStreamParser;
+use UserDataBackup\Services\Internal\BackupV2JsonStreamParser;
+use UserDataBackup\Services\Internal\BackupV2JsonWriter;
+use UserDataBackup\ValueObjects\BackupHeader;
 use Generator;
 use Illuminate\Support\Facades\Crypt;
 use Throwable;

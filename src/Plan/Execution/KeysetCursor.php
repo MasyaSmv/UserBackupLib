@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Plan\Execution;
+namespace UserDataBackup\Plan\Execution;
 
-use App\Plan\CursorKey;
+use UserDataBackup\Plan\CursorKey;
 use Illuminate\Database\Query\Builder;
 
 /**

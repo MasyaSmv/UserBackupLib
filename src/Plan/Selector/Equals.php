@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Plan\Selector;
+namespace UserDataBackup\Plan\Selector;
 
 use InvalidArgumentException;
 
@@ -68,7 +68,7 @@ final class Equals implements Selector
     }
 
     /**
-     * @return array<int, \App\Plan\ScopeKey>
+     * @return array<int, \UserDataBackup\Plan\ScopeKey>
      */
     public function scopeKeys(): array
     {

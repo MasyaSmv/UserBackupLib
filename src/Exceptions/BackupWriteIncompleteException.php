@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Exceptions;
+namespace UserDataBackup\Exceptions;
 
 /**
  * Порция бэкапа записалась в файл не целиком: `fwrite` вернул меньше байт или ничего (кончилось место).

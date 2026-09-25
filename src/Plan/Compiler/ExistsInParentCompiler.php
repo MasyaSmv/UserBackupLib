@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace App\Plan\Compiler;
+namespace UserDataBackup\Plan\Compiler;
 
-use App\Plan\Exceptions\CrossConnectionParentException;
-use App\Plan\ScopeValues;
-use App\Plan\Selector\ExistsInParent;
-use App\Plan\Selector\Selector;
+use UserDataBackup\Plan\Exceptions\CrossConnectionParentException;
+use UserDataBackup\Plan\ScopeValues;
+use UserDataBackup\Plan\Selector\ExistsInParent;
+use UserDataBackup\Plan\Selector\Selector;
 use Illuminate\Database\Query\Builder;
 
 /**

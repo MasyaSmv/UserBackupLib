@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Plan\Execution;
+namespace UserDataBackup\Plan\Execution;
 
-use App\Plan\TableRef;
+use UserDataBackup\Plan\TableRef;
 
 /**
  * Что произошло с одной таблицей во время исполнения плана.

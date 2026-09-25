@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace App\Plan\Execution;
+namespace UserDataBackup\Plan\Execution;
 
-use App\Plan\Compiler\SelectorCompiler;
-use App\Plan\ScopeValues;
-use App\Plan\UserDataRule;
+use UserDataBackup\Plan\Compiler\SelectorCompiler;
+use UserDataBackup\Plan\ScopeValues;
+use UserDataBackup\Plan\UserDataRule;
 use Generator;
 use Illuminate\Database\ConnectionInterface;
 
@@ -36,7 +36,7 @@ final class RowChunkReader
     /**
      * @return Generator<int, array<int, array<string, mixed>>> Порции значений ключа курсора.
      *
-     * @throws \App\Plan\Exceptions\NullCursorValueException
+     * @throws \UserDataBackup\Plan\Exceptions\NullCursorValueException
      */
     public function chunks(
         ConnectionInterface $connection,

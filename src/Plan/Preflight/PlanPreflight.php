@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace App\Plan\Preflight;
+namespace UserDataBackup\Plan\Preflight;
 
-use App\Plan\CompiledUserDataPlan;
-use App\Plan\Exceptions\SchemaMismatchException;
-use App\Plan\Exceptions\UncheckedConnectionException;
-use App\Plan\TableRef;
-use App\Plan\UserDataRule;
-use App\Services\Internal\ConnectionSchema;
+use UserDataBackup\Plan\CompiledUserDataPlan;
+use UserDataBackup\Plan\Exceptions\SchemaMismatchException;
+use UserDataBackup\Plan\Exceptions\UncheckedConnectionException;
+use UserDataBackup\Plan\TableRef;
+use UserDataBackup\Plan\UserDataRule;
+use UserDataBackup\Services\Internal\ConnectionSchema;
 use Illuminate\Database\ConnectionResolverInterface;
 
 /**
@@ -40,7 +40,7 @@ final class PlanPreflight
      * подключении, которое не передали, — ошибка вызова, а не различие окружений.
      *
      * @throws UncheckedConnectionException                 Правило на непроверенном подключении.
-     * @throws \App\Plan\Exceptions\PlanIncompleteException Схема содержит таблицу без правила.
+     * @throws \UserDataBackup\Plan\Exceptions\PlanIncompleteException Схема содержит таблицу без правила.
      * @throws SchemaMismatchException                      Правило расходится со схемой.
      */
     public function check(CompiledUserDataPlan $plan, array $connectionNames): PreflightReport

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Plan\Exceptions;
+namespace UserDataBackup\Plan\Exceptions;
 
 /**
  * Для изменяющего действия правила нет обработчика.

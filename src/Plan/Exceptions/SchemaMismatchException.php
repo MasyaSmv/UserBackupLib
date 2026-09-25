@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Plan\Exceptions;
+namespace UserDataBackup\Plan\Exceptions;
 
 /**
  * План описывает таблицы или колонки, которых в схеме нет.

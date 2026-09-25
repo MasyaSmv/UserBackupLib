@@ -14,7 +14,7 @@
   },
   "autoload": {
     "psr-4": {
-      "App\\": "src/"
+      "UserDataBackup\\": "src/"
     }
   },
   "autoload-dev": {
@@ -25,7 +25,7 @@
   "extra": {
     "laravel": {
       "providers": [
-        "App\\UserBackupServiceProvider"
+        "UserDataBackup\\UserBackupServiceProvider"
       ]
     }
   },

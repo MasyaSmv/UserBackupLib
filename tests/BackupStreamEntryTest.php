@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests;
 
-use App\Services\Internal\BackupStreamEntry;
+use UserDataBackup\Services\Internal\BackupStreamEntry;
 use PHPUnit\Framework\TestCase;
 
 class BackupStreamEntryTest extends TestCase

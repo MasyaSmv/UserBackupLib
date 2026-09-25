@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Tests;
 
-use App\Services\Internal\BackupJsonStreamParser;
-use App\Services\Internal\BackupStreamEntry;
+use UserDataBackup\Services\Internal\BackupJsonStreamParser;
+use UserDataBackup\Services\Internal\BackupStreamEntry;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 

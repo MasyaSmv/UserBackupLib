@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Exceptions;
+namespace UserDataBackup\Exceptions;
 
 /**
  * Записанный файл бэкапа не сбросился на диск или не закрылся: буфер мог не дойти до файла (WS-3133).

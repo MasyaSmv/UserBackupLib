@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Plan\Selector;
+namespace UserDataBackup\Plan\Selector;
 
-use App\Plan\ScopeKey;
+use UserDataBackup\Plan\ScopeKey;
 use InvalidArgumentException;
 
 /**

@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace App\Services\Internal;
+namespace UserDataBackup\Services\Internal;
 
-use App\Exceptions\BackupFileCloseException;
-use App\Exceptions\BackupWriteIncompleteException;
-use App\Exceptions\FileStorageException;
+use UserDataBackup\Exceptions\BackupFileCloseException;
+use UserDataBackup\Exceptions\BackupWriteIncompleteException;
+use UserDataBackup\Exceptions\FileStorageException;
 
 class FileSystemAdapter
 {

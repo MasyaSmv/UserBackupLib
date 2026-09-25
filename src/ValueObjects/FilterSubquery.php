@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\ValueObjects;
+namespace UserDataBackup\ValueObjects;
 
 /**
  * Спецификация коррелированного подзапроса для фильтрации таблицы.

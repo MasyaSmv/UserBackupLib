@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Plan\Selector;
+namespace UserDataBackup\Plan\Selector;
 
 /**
  * Декларация того, какие строки таблицы принадлежат пользователю.
@@ -29,7 +29,7 @@ interface Selector
     /**
      * Наборы значений скоупа, которые нужны селектору для работы.
      *
-     * @return array<int, \App\Plan\ScopeKey>
+     * @return array<int, \UserDataBackup\Plan\ScopeKey>
      */
     public function scopeKeys(): array;
 }

@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace App\Services\Internal;
+namespace UserDataBackup\Services\Internal;
 
-use App\Exceptions\BackupSerializationException;
-use App\ValueObjects\BackupHeader;
-use App\ValueObjects\BackupTableSection;
+use UserDataBackup\Exceptions\BackupSerializationException;
+use UserDataBackup\ValueObjects\BackupHeader;
+use UserDataBackup\ValueObjects\BackupTableSection;
 
 /**
  * Пишет бэкап второй версии: шапка, затем секции с подключением и таблицей.

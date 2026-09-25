@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace App\Plan\Execution;
+namespace UserDataBackup\Plan\Execution;
 
-use App\Plan\CompiledUserDataPlan;
-use App\Plan\Preflight\PlanPreflight;
-use App\Plan\Preflight\PreflightReport;
-use App\Plan\ScopeValues;
+use UserDataBackup\Plan\CompiledUserDataPlan;
+use UserDataBackup\Plan\Preflight\PlanPreflight;
+use UserDataBackup\Plan\Preflight\PreflightReport;
+use UserDataBackup\Plan\ScopeValues;
 
 /**
  * Безопасный порядок исполнения плана: сверка со схемой, сухой прогон, предохранитель,
@@ -42,7 +42,7 @@ final class GuardedPlanRunner
     /**
      * @param array<int, string> $connectionNames Подключения, которые обслуживает план.
      *
-     * @throws \App\Plan\Exceptions\PlanException
+     * @throws \UserDataBackup\Plan\Exceptions\PlanException
      */
     public function run(
         CompiledUserDataPlan $plan,
@@ -94,7 +94,7 @@ final class GuardedPlanRunner
      * Компиляция проверяется всегда, а не только перед сухим прогоном: без лимитов ошибка
      * описания иначе всплыла бы посреди удаления (WS-3105).
      *
-     * @throws \App\Plan\Exceptions\PlanException
+     * @throws \UserDataBackup\Plan\Exceptions\PlanException
      */
     private function executablePlan(
         CompiledUserDataPlan $plan,

@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace App\Plan\Execution;
+namespace UserDataBackup\Plan\Execution;
 
-use App\Plan\ScopeValues;
-use App\Plan\TableAction;
-use App\Plan\UserDataRule;
+use UserDataBackup\Plan\ScopeValues;
+use UserDataBackup\Plan\TableAction;
+use UserDataBackup\Plan\UserDataRule;
 use Illuminate\Database\ConnectionInterface;
 
 /**

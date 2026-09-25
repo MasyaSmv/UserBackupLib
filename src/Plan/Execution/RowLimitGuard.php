@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Plan\Execution;
+namespace UserDataBackup\Plan\Execution;
 
-use App\Plan\Exceptions\RowLimitExceededException;
+use UserDataBackup\Plan\Exceptions\RowLimitExceededException;
 
 /**
  * Проверяет охват сухого прогона против предохранителя.

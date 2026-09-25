@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace App\Plan;
+namespace UserDataBackup\Plan;
 
-use App\Plan\Selector\AnyOf;
-use App\Plan\Selector\ExistsInParent;
-use App\Plan\Selector\MorphBranch;
-use App\Plan\Selector\MorphReference;
-use App\Plan\Selector\Selector;
+use UserDataBackup\Plan\Selector\AnyOf;
+use UserDataBackup\Plan\Selector\ExistsInParent;
+use UserDataBackup\Plan\Selector\MorphBranch;
+use UserDataBackup\Plan\Selector\MorphReference;
+use UserDataBackup\Plan\Selector\Selector;
 
 /**
  * Собирает таблицы-родители, от которых зависит селектор.

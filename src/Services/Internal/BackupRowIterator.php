@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Services\Internal;
+namespace UserDataBackup\Services\Internal;
 
-use App\Exceptions\BackupSerializationException;
+use UserDataBackup\Exceptions\BackupSerializationException;
 
 /**
  * Разворачивает источники строк таблицы в поток JSON-строк для записи в файл.

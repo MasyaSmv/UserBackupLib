@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\ValueObjects;
+namespace UserDataBackup\ValueObjects;
 
-use App\Exceptions\BackupFormatException;
+use UserDataBackup\Exceptions\BackupFormatException;
 use InvalidArgumentException;
 
 /**

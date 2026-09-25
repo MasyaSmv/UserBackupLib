@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Services\Internal;
+namespace UserDataBackup\Services\Internal;
 
 use Illuminate\Database\ConnectionInterface;
 

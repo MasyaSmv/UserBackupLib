@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace App\Plan\Execution;
+namespace UserDataBackup\Plan\Execution;
 
-use App\Plan\CompiledUserDataPlan;
-use App\Plan\Compiler\SelectorCompiler;
-use App\Plan\ScopeValues;
+use UserDataBackup\Plan\CompiledUserDataPlan;
+use UserDataBackup\Plan\Compiler\SelectorCompiler;
+use UserDataBackup\Plan\ScopeValues;
 use Illuminate\Database\ConnectionResolverInterface;
 
 /**
@@ -31,7 +31,7 @@ final class PlanCompilationCheck
     }
 
     /**
-     * @throws \App\Plan\Exceptions\PlanException Правило не компилируется в запрос.
+     * @throws \UserDataBackup\Plan\Exceptions\PlanException Правило не компилируется в запрос.
      */
     public function assertCompiles(CompiledUserDataPlan $plan, ScopeValues $scope): void
     {

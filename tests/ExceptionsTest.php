@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace Tests;
 
-use App\Exceptions\BackupException;
-use App\Exceptions\BackupDecryptionException;
-use App\Exceptions\BackupEncryptionException;
-use App\Exceptions\BackupFormatException;
-use App\Exceptions\BackupSerializationException;
-use App\Exceptions\FileStorageException;
-use App\Exceptions\UserDataNotFoundException;
+use UserDataBackup\Exceptions\BackupException;
+use UserDataBackup\Exceptions\BackupDecryptionException;
+use UserDataBackup\Exceptions\BackupEncryptionException;
+use UserDataBackup\Exceptions\BackupFormatException;
+use UserDataBackup\Exceptions\BackupSerializationException;
+use UserDataBackup\Exceptions\FileStorageException;
+use UserDataBackup\Exceptions\UserDataNotFoundException;
 use PHPUnit\Framework\TestCase;
 
 class ExceptionsTest extends TestCase

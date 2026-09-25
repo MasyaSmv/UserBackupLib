@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Services\Internal;
+namespace UserDataBackup\Services\Internal;
 
-use App\Exceptions\BackupDecryptionException;
-use App\Exceptions\FileStorageException;
+use UserDataBackup\Exceptions\BackupDecryptionException;
+use UserDataBackup\Exceptions\FileStorageException;
 use Generator;
 use Illuminate\Support\Facades\Crypt;
 use Throwable;
