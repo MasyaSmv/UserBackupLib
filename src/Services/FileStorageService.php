@@ -54,8 +54,8 @@ class FileStorageService implements FileStorageServiceInterface
     }
 
     /**
-     * Файл первой версии: без шапки и подключений. Остаётся для старого пути пакета
-     * (`UserBackupService`); бэкапы по плану пишутся через `saveBackup`.
+     * Файл первой версии: без шапки и подключений. Пишется только для совместимости и тестов;
+     * бэкапы по плану пишутся через `saveBackup`.
      */
     public function saveToFile(string $filePath, iterable $data, bool $encrypt = true): string
     {

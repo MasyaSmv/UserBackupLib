@@ -4,243 +4,58 @@
 [![Composer package](https://img.shields.io/badge/Composer-fin%2Fuser--backup--lib-885630?logo=composer&logoColor=white)](https://packagist.org/packages/fin/user-backup-lib)
 [![Laravel Support](https://img.shields.io/badge/Laravel-8.x-FF2D20?logo=laravel&logoColor=white)](https://laravel.com/docs/8.x)
 [![PHPUnit](https://img.shields.io/badge/PHPUnit-9.6-366488?logo=php&logoColor=white)](https://phpunit.de/)
-[![Coverage](https://img.shields.io/badge/Coverage-100%25-brightgreen)](#%D1%82%D0%B5%D1%81%D1%82%D1%8B)
-[![Docs](https://img.shields.io/badge/Docs-user--backup--guide-blue)](docs/user-backup-guide.md)
-[![Wiki](https://img.shields.io/badge/Wiki-GitHub-black?logo=github)](https://github.com/MasyaSmv/UserBackupLib/wiki)
-[![Release](https://img.shields.io/badge/Release-v2.4.0-green)](https://github.com/MasyaSmv/UserBackupLib/releases/tag/v2.4.0)
 
-Библиотека для резервного копирования пользовательских данных из нескольких баз данных с потоковой записью, чанковым шифрованием и опциональным удалением исходных данных.
+Библиотека для выгрузки, удаления и восстановления данных пользователя по **явному плану**:
+какие строки принадлежат пользователю, задаёт приложение декларацией правил, а не имя колонки
+`user_id`. Выгрузка и удаление отбирают строки одними и теми же селекторами, поэтому бэкап
+всегда покрывает то, что будет удалено.
 
-Документация:
+## Что в пакете
 
-- [README quick start](README.md)
-- [Подробный гайд](docs/user-backup-guide.md)
-- [GitHub Wiki](https://github.com/MasyaSmv/UserBackupLib/wiki)
-- [Laravel integration notes](https://github.com/MasyaSmv/UserBackupLib/wiki/Laravel-Integration)
-- [Release notes](https://github.com/MasyaSmv/UserBackupLib/wiki/Release-Notes)
+| Слой | Где | Что делает |
+|---|---|---|
+| План | `src/Plan/*` | Правила таблиц (`UserDataRule`, `TableAction`: keep / backupAndDelete / backupOnly / detach), AST селекторов (`Equals`, `InScope`, `ExistsInParent`, `AnyOf`, `MorphReference`), компиляция в `CompiledUserDataPlan`, порядок удаления с проверкой циклов |
+| Исполнение | `src/Plan/Execution/*` | Обход строк keyset-курсором (в том числе составным), удаление и отвязка порциями, предохранитель по числу строк (`RowLimitGuard`) |
+| Preflight | `src/Plan/Preflight/*` | Сверка плана со схемой БД до первого изменения |
+| Файлы | `src/Services/FileStorageService.php` | Потоковая запись и чтение бэкапа, шифрование порциями через `Crypt` (`APP_KEY`) |
 
-## Возможности
+Сам план собирает приложение: провайдеры правил по доменам, профили операций, подключения.
 
-- Потоковое чтение данных из БД без загрузки всего набора в память.
-- Потоковая запись backup JSON в файл.
-- Чанковое шифрование больших backup-файлов.
-- Потоковое чтение backup-файлов через `streamBackupData()`.
-- Объектный сценарий создания backup через `UserBackupCreateOptions`.
-- Ручной сценарий создания backup-сервиса.
-- Контейнерный сценарий через factory.
-- Объектный сценарий очистки через `UserDataScope`.
-- Очистка пользовательских данных после backup.
-- **Keyset-пагинация** (`lazyById`) по числовому первичному ключу — не деградирует с глубиной; для составных/нечисловых PK автоматический OFFSET-fallback.
-- **Подзапрос-фильтр** через `FilterSubquery` — замена `whereIn([десятки тысяч литералов])` на компактный `IN (SELECT ...)`.
-- **Предзагрузка схемы** одним запросом на подключение (таблицы/колонки/PK) — снимает per-table round-trip «налог» при обходе всех таблиц удалённой БД.
-- Пустые таблицы не попадают в файл бэкапа (нечего восстанавливать) — меньше размер и быстрее restore.
+## Формат файла
 
-## Важные границы
+- **v2** (`saveBackup`) — шапка `@meta` (владелец, версия формата и плана) и секции таблиц с
+  подключением: `{"@meta":{...},"tables":[{"connection":"mysql","table":"...","rows":[...]}]}`.
+- **v1** (`saveToFile`) — `{"table":[rows]}` без шапки. Пишется только для совместимости и
+  тестов, читается всегда.
 
-- Пакет ориентирован в первую очередь на MySQL-подобный сценарий.
-- Generic restore внутри пакета сейчас не реализован.
-- Raw rows таблиц остаются массивами, потому что схема таблиц динамическая.
-- Runtime-параметры backup use case не должны резолвиться напрямую из контейнера без явного scope.
+Запись атомарная: файл пишется во временный, порция дописывается до конца, закрытие
+проверяется, готовый файл публикуется переименованием. Недописанный бэкап не может выглядеть
+готовым (`BackupWriteIncompleteException`, `BackupFileCloseException`).
 
-## Установка
-
-```bash
-composer require fin/user-backup-lib
-```
-
-Packagist:
-
-- https://packagist.org/packages/fin/user-backup-lib
-
-## Быстрый старт
-
-### Ручной сценарий
+## Чтение
 
 ```php
-use App\Services\UserBackupService;
-use App\ValueObjects\UserBackupCreateOptions;
+use App\Contracts\FileStorageServiceInterface;
 
-$options = UserBackupCreateOptions::fromLegacy(
-    userId: 42,
-    accountIds: [101, 102],
-    activeIds: [501],
-    ignoredTables: ['temp_logs'],
-    connections: ['mysql', 'replica'],
-);
+$storage = app(FileStorageServiceInterface::class);
 
-$backup = UserBackupService::createFromOptions($options);
-```
+$header = $storage->readHeader($path);          // v1 → BackupHeader::legacy()
 
-Legacy-совместимый вариант:
-
-```php
-use App\Services\UserBackupService;
-
-$backup = UserBackupService::create(
-    userId: 42,
-    accountIds: [101, 102],
-    activeIds: [501],
-    ignoredTables: ['temp_logs'],
-    connections: ['mysql', 'replica'],
-);
-
-$backup->fetchAllUserData();
-
-$path = $backup->saveBackupToFile('/tmp/backup_42.json');
-// вернется /tmp/backup_42.json.enc
-```
-
-### Подзапрос-фильтр вместо гигантского whereIn
-
-Когда набор значений фильтра огромен (например, десятки тысяч `active_id`), передача их
-литеральным списком делает SQL многокилобайтным и дорогим в разборе на каждой таблице.
-Вместо этого можно передать спецификацию подзапроса — библиотека подставит
-`active_id IN (SELECT id FROM actives WHERE user_id = ?)`. Подзапрос применяется только
-если целевая таблица (`actives`) присутствует в подключении; иначе — обычный `whereIn`.
-
-```php
-use App\Services\UserBackupService;
-use App\ValueObjects\FilterSubquery;
-
-$backup = UserBackupService::create(
-    userId: 42,
-    accountIds: [101, 102],
-    activeIds: [501, 502],          // используется как fallback, если подзапрос неприменим
-    ignoredTables: ['temp_logs'],
-    connections: ['mysql', 'replica'],
-    activeIdSubquery: new FilterSubquery(
-        table: 'actives',           // откуда брать id
-        selectColumn: 'id',
-        whereColumn: 'user_id',
-        whereValue: 42,
-    ),
-);
-
-$backup->fetchAllUserData();
-$path = $backup->saveBackupToFile('/tmp/backup_42.json');
-```
-
-> Важно: подзапрос обязан воспроизводить тот же набор строк, что и литеральный список
-> (те же soft-delete/scope-условия), иначе в backup попадут «лишние» строки.
-
-### Контейнерный сценарий
-
-```php
-use App\Contracts\UserBackupServiceFactoryInterface;
-use App\ValueObjects\UserDataScope;
-
-$factory = app(UserBackupServiceFactoryInterface::class);
-
-$backup = $factory->make(new UserDataScope(
-    userId: 42,
-    accountIds: [101, 102],
-    activeIds: [501],
-    ignoredTables: ['temp_logs'],
-));
-
-$backup->fetchAllUserData();
-$path = $backup->saveBackupToFile(storage_path('app/backups/user-42.json'));
-```
-
-Legacy-совместимый вариант:
-
-```php
-$backup = $factory->makeForUser(
-    userId: 42,
-    accountIds: [101, 102],
-    activeIds: [501],
-    ignoredTables: ['temp_logs'],
-);
-```
-
-## Очистка данных
-
-```php
-use App\Contracts\UserDataDeletionServiceInterface;
-use App\ValueObjects\UserDataScope;
-
-$cleaner = app(UserDataDeletionServiceInterface::class);
-
-$cleaner->deleteScope(new UserDataScope(
-    userId: 42,
-    accountIds: [101, 102],
-    activeIds: [501],
-    ignoredTables: ['temp_logs'],
-));
-```
-
-Legacy-совместимый вариант:
-
-```php
-$cleaner->deleteUserData(
-    userId: 42,
-    accountIds: [101, 102],
-    activeIds: [501],
-    ignoredTables: ['temp_logs'],
-);
-```
-
-## Чтение backup
-
-### Полная расшифровка в массив
-
-```php
-use App\Services\FileStorageService;
-
-$data = FileStorageService::decryptFile('/tmp/backup_42.json.enc');
-```
-
-### Потоковое чтение
-
-```php
-use App\Services\FileStorageService;
-
-$storage = new FileStorageService();
-
-foreach ($storage->streamBackupData('/tmp/backup_42.json.enc') as $entry) {
-    $table = $entry['table'];
-    $row = $entry['row'];
+foreach ($storage->streamBackupData($path) as $entry) {
+    // ['connection' => ..., 'table' => ..., 'row' => [...]]
 }
 ```
 
-Совместимость форматов:
+## Что удалено
 
-- `.json` читается потоково.
-- новый чанковый `.json.enc` читается потоково.
-- legacy `.enc` поддерживается по совместимости, но не гарантирует ту же memory-efficiency на очень больших файлах.
-
-## Конфигурация
-
-Пакетный конфиг: [config/user-backup.php](config/user-backup.php)
-
-```php
-return [
-    'connections' => ['mysql', 'replica'],
-];
-```
-
-Правила:
-
-- если `user-backup.connections` пуст, пакет берет все ключи из `database.connections`;
-- для шифрования используется стандартный `APP_KEY` Laravel;
-- путь сохранения backup выбирает приложение, не пакет.
-- параметр `accountIds` в текущей интеграции проекта исторический и по факту содержит ids субсчетов.
+Старый движок эвристического удаления и выгрузки по колонке `user_id`
+(`UserBackupService`, `UserBackupServiceFactory`, `UserDataDeletionService`, `BackupProcessor`,
+`DatabaseService`, `UserDataScope`, конфиг `user-backup.connections`) удалён: его заменил план.
+Гайд [docs/user-backup-guide.md](docs/user-backup-guide.md) описывает удалённый API и оставлен
+как история.
 
 ## Тесты
 
 ```bash
-php -d pcov.enabled=1 vendor/bin/phpunit --coverage-text --coverage-html build/coverage
+vendor/bin/phpunit
 ```
-
-Текущее покрытие пакета: `100%`.
-
-## Структура
-
-- `src/Contracts/*` — контракты сервисов и factory.
-- `src/Services/DatabaseService.php` — потоковое чтение из БД.
-- `src/Services/FileStorageService.php` — запись, шифрование и чтение backup-файлов.
-- `src/Services/UserBackupService.php` — orchestration backup use case.
-- `src/Services/UserBackupServiceFactory.php` — factory для container-friendly сценария.
-- `src/Services/UserDataDeletionService.php` — очистка данных.
-- `src/ValueObjects/*` — внутренние DTO/value objects.
-- `docs/user-backup-guide.md` — полная документация.

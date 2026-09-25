@@ -1,5 +1,7 @@
 # UserBackupLib Guide
 
+> **Устарело.** Гайд описывает движок, удалённый в WS-3273 (`UserBackupService`, `UserDataDeletionService`, `UserDataScope`). Актуальное устройство пакета — в [README](../README.md).
+
 Навигация:
 
 - [README](../README.md)
