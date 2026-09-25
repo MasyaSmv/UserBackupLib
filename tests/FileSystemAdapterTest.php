@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests;
 
+use App\Exceptions\BackupFileCloseException;
+use App\Exceptions\BackupWriteIncompleteException;
 use App\Exceptions\FileStorageException;
 use App\Services\Internal\FileSystemAdapter;
 use PHPUnit\Framework\TestCase;
@@ -12,6 +14,12 @@ class FileSystemAdapterTest extends TestCase
 {
     private const FAIL_LINE_SCHEME = 'failline';
 
+    private const WRITE_SCHEMES = [
+        'shortwrite' => ShortWriteStream::class,
+        'stuckwrite' => StuckWriteStream::class,
+        'failflush' => FailingFlushStream::class,
+    ];
+
     private string $baseDir;
 
     public static function setUpBeforeClass(): void
@@ -19,12 +27,24 @@ class FileSystemAdapterTest extends TestCase
         if (!in_array(self::FAIL_LINE_SCHEME, stream_get_wrappers(), true)) {
             stream_wrapper_register(self::FAIL_LINE_SCHEME, FailingLineStream::class);
         }
+
+        foreach (self::WRITE_SCHEMES as $scheme => $class) {
+            if (!in_array($scheme, stream_get_wrappers(), true)) {
+                stream_wrapper_register($scheme, $class);
+            }
+        }
     }
 
     public static function tearDownAfterClass(): void
     {
         if (in_array(self::FAIL_LINE_SCHEME, stream_get_wrappers(), true)) {
             stream_wrapper_unregister(self::FAIL_LINE_SCHEME);
+        }
+
+        foreach (array_keys(self::WRITE_SCHEMES) as $scheme) {
+            if (in_array($scheme, stream_get_wrappers(), true)) {
+                stream_wrapper_unregister($scheme);
+            }
         }
     }
 
@@ -151,8 +171,10 @@ class FileSystemAdapterTest extends TestCase
         try {
             $adapter->write($handle, 'cannot-write');
             $this->fail('Expected exception was not thrown.');
-        } catch (FileStorageException $exception) {
-            $this->assertSame('Failed to write backup chunk to file', $exception->getMessage());
+        } catch (BackupWriteIncompleteException $exception) {
+            $this->assertSame(BackupWriteIncompleteException::CODE, $exception->errorCode());
+            $this->assertSame(0, $exception->context()['written_bytes']);
+            $this->assertSame(12, $exception->context()['expected_bytes']);
         } finally {
             fclose($handle);
         }
@@ -217,6 +239,40 @@ class FileSystemAdapterTest extends TestCase
 
         rmdir($this->baseDir);
     }
+    public function test_write_completes_chunk_when_stream_accepts_partial_writes(): void
+    {
+        ShortWriteStream::$buffer = '';
+        $handle = fopen('shortwrite://target', 'wb');
+
+        (new FileSystemAdapter())->write($handle, 'backup-chunk-payload');
+
+        $this->assertSame('backup-chunk-payload', ShortWriteStream::$buffer);
+        fclose($handle);
+    }
+
+    public function test_write_throws_when_stream_stops_accepting_bytes(): void
+    {
+        $handle = fopen('stuckwrite://target', 'wb');
+
+        try {
+            (new FileSystemAdapter())->write($handle, 'backup-chunk-payload');
+            $this->fail('Expected exception was not thrown.');
+        } catch (BackupWriteIncompleteException $exception) {
+            $this->assertSame(20, $exception->context()['expected_bytes']);
+            $this->assertSame(StuckWriteStream::ACCEPTED, $exception->context()['written_bytes']);
+        } finally {
+            fclose($handle);
+        }
+    }
+
+    public function test_close_written_throws_when_flush_fails(): void
+    {
+        $handle = fopen('failflush://target', 'wb');
+
+        $this->expectException(BackupFileCloseException::class);
+
+        (new FileSystemAdapter())->closeWritten($handle);
+    }
 }
 
 class FailingLineStream
@@ -234,6 +290,92 @@ class FailingLineStream
     }
 
     public function stream_eof(): bool
+    {
+        return false;
+    }
+}
+
+/**
+ * Принимает не больше трёх байт за вызов — как `fwrite` при частичной записи.
+ */
+class ShortWriteStream
+{
+    public static string $buffer = '';
+
+    public $context;
+
+    public function stream_open(string $path, string $mode, int $options, ?string &$openedPath): bool
+    {
+        return true;
+    }
+
+    public function stream_eof(): bool
+    {
+        return false;
+    }
+
+    public function stream_write(string $data): int
+    {
+        $part = substr($data, 0, 3);
+        self::$buffer .= $part;
+
+        return strlen($part);
+    }
+}
+
+/**
+ * Принимает первые байты и перестаёт — как файл, у которого кончилось место.
+ */
+class StuckWriteStream
+{
+    public const ACCEPTED = 4;
+
+    public $context;
+
+    private int $written = 0;
+
+    public function stream_open(string $path, string $mode, int $options, ?string &$openedPath): bool
+    {
+        return true;
+    }
+
+    public function stream_eof(): bool
+    {
+        return false;
+    }
+
+    public function stream_write(string $data): int
+    {
+        $accepted = max(0, min(strlen($data), self::ACCEPTED - $this->written));
+        $this->written += $accepted;
+
+        return $accepted;
+    }
+}
+
+/**
+ * Не сбрасывает буфер на диск.
+ */
+class FailingFlushStream
+{
+    public $context;
+
+    public function stream_open(string $path, string $mode, int $options, ?string &$openedPath): bool
+    {
+        return true;
+    }
+
+    public function stream_eof(): bool
+    {
+        return false;
+    }
+
+    public function stream_write(string $data): int
+    {
+        return strlen($data);
+    }
+
+    public function stream_flush(): bool
     {
         return false;
     }

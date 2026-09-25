@@ -111,13 +111,7 @@ class FileStorageService implements FileStorageServiceInterface
     private function writeAtomically(string $filePath, bool $encrypt, callable $writer): string
     {
         $tempPath = $this->createDirectoryAndTempFile($filePath);
-        $tempHandle = $this->fileSystem()->openForWrite($tempPath);
-
-        try {
-            $writer($tempHandle);
-        } finally {
-            $this->fileSystem()->close($tempHandle);
-        }
+        $this->writeFile($tempPath, $writer);
 
         if ($encrypt) {
             $encryptedPath = $filePath . '.enc';
@@ -129,6 +123,34 @@ class FileStorageService implements FileStorageServiceInterface
         $this->fileSystem()->rename($tempPath, $filePath);
 
         return $filePath;
+    }
+
+    /**
+     * Файл считается записанным только после успешного закрытия; при любом сбое недописанный
+     * файл удаляется, чтобы его нельзя было принять за готовый (WS-3133).
+     *
+     * @param callable(resource): void $writer
+     */
+    private function writeFile(string $path, callable $writer): void
+    {
+        $handle = $this->fileSystem()->openForWrite($path);
+
+        try {
+            $writer($handle);
+        } catch (Throwable $e) {
+            $this->fileSystem()->close($handle);
+            $this->fileSystem()->delete($path);
+
+            throw $e;
+        }
+
+        try {
+            $this->fileSystem()->closeWritten($handle);
+        } catch (Throwable $e) {
+            $this->fileSystem()->delete($path);
+
+            throw $e;
+        }
     }
 
     /**
@@ -196,25 +218,39 @@ class FileStorageService implements FileStorageServiceInterface
      */
     private function encryptTempFile(string $tempPath, string $encryptedPath): void
     {
+        // Шифротекст тоже пишется во временный файл: иначе сбой посередине оставлял бы
+        // недописанный `.enc` под именем готового бэкапа (WS-3133).
+        $encryptedTempPath = $this->createUniqueTempPath($encryptedPath);
         $readHandle = $this->fileSystem()->openForRead($tempPath);
-        $writeHandle = $this->fileSystem()->openForWrite($encryptedPath);
 
         try {
-            $chunkSize = 5 * 1024 * 1024; // 5 MB
-            while (!feof($readHandle)) {
-                $chunk = $this->fileSystem()->readChunk($readHandle, $chunkSize, $tempPath, 'Failed to read temp file: %s');
-
-                if ($chunk === '') {
-                    break;
-                }
-
-                $encryptedChunk = $this->encryptChunk($chunk, $encryptedPath);
-                $this->writeChunk($writeHandle, $encryptedChunk . PHP_EOL);
-            }
+            $this->writeFile($encryptedTempPath, function ($writeHandle) use ($readHandle, $tempPath, $encryptedPath): void {
+                $this->encryptStream($readHandle, $writeHandle, $tempPath, $encryptedPath);
+            });
         } finally {
             $this->fileSystem()->close($readHandle);
-            $this->fileSystem()->close($writeHandle);
             $this->fileSystem()->delete($tempPath);
+        }
+
+        $this->fileSystem()->rename($encryptedTempPath, $encryptedPath);
+    }
+
+    /**
+     * @param resource $readHandle
+     * @param resource $writeHandle
+     */
+    private function encryptStream($readHandle, $writeHandle, string $tempPath, string $encryptedPath): void
+    {
+        $chunkSize = 5 * 1024 * 1024; // 5 MB
+
+        while (!feof($readHandle)) {
+            $chunk = $this->fileSystem()->readChunk($readHandle, $chunkSize, $tempPath, 'Failed to read temp file: %s');
+
+            if ($chunk === '') {
+                break;
+            }
+
+            $this->writeChunk($writeHandle, $this->encryptChunk($chunk, $encryptedPath) . PHP_EOL);
         }
     }
 

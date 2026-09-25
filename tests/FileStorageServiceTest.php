@@ -421,11 +421,18 @@ class FileStorageServiceTest extends TestCase
                 return fopen('php://temp', 'rb');
             }
 
+            public array $renamed = [];
+
             public function close($handle): void
             {
                 if (is_resource($handle)) {
                     fclose($handle);
                 }
+            }
+
+            public function rename(string $from, string $to): void
+            {
+                $this->renamed[$to] = $from;
             }
         };
 
@@ -435,7 +442,8 @@ class FileStorageServiceTest extends TestCase
         $result = $storage->saveToFile($path, ['users' => [[]]], true);
 
         $this->assertSame($path . '.enc', $result);
-        $this->assertArrayHasKey($path . '.enc', $adapter->written);
+        $this->assertArrayHasKey($path . '.enc', $adapter->renamed, 'Encrypted file must be published by rename');
+        $this->assertArrayHasKey($adapter->renamed[$path . '.enc'], $adapter->written, 'Ciphertext must be written to a temp file first');
     }
 
     public function test_encrypt_chunk_wraps_encryption_failures_with_package_exception(): void
@@ -527,6 +535,29 @@ class FileStorageServiceTest extends TestCase
         $this->assertSame([['id' => 1]], $decoded['users']);
         // Валидность JSON (нет висячих запятых от пропущенных секций).
         $this->assertNotNull($decoded, 'Файл должен быть валидным JSON');
+    }
+
+    public function test_failed_write_leaves_neither_temp_nor_final_file(): void
+    {
+        $adapter = new class extends \App\Services\Internal\FileSystemAdapter {
+            public function openForWrite(string $path)
+            {
+                // Настоящее устройство без места: любой fwrite падает с ENOSPC.
+                touch($path);
+
+                return fopen('/dev/full', 'wb');
+            }
+        };
+        $path = $this->makePath('no-space.json');
+
+        try {
+            (new FileStorageService($adapter))->saveToFile($path, ['users' => [['id' => 1]]], false);
+            $this->fail('Expected exception was not thrown.');
+        } catch (\App\Exceptions\BackupWriteIncompleteException $exception) {
+            $this->assertSame(\App\Exceptions\BackupWriteIncompleteException::CODE, $exception->errorCode());
+        }
+
+        $this->assertSame([], glob($this->baseDir . DIRECTORY_SEPARATOR . 'no-space.json*'));
     }
 
     private function makePath(string $filename): string

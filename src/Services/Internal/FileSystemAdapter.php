@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Internal;
 
+use App\Exceptions\BackupFileCloseException;
+use App\Exceptions\BackupWriteIncompleteException;
 use App\Exceptions\FileStorageException;
 
 class FileSystemAdapter
@@ -67,10 +69,43 @@ class FileSystemAdapter
         return $handle;
     }
 
+    /**
+     * Дописывает порцию целиком: `fwrite` вправе записать часть байт, и это не ошибка, а повод
+     * дописать остаток. Ошибка — когда запись не продвигается (кончилось место).
+     *
+     * @throws BackupWriteIncompleteException
+     */
     public function write($handle, string $chunk): void
     {
-        if (@fwrite($handle, $chunk) === false) {
-            throw new FileStorageException('Failed to write backup chunk to file');
+        $expected = strlen($chunk);
+        $written = 0;
+
+        while ($written < $expected) {
+            $bytes = @fwrite($handle, substr($chunk, $written));
+
+            if ($bytes === false || $bytes === 0) {
+                throw new BackupWriteIncompleteException($this->pathOf($handle), $expected, $written);
+            }
+
+            $written += $bytes;
+        }
+    }
+
+    /**
+     * Закрывает файл, в который писали: сбой сброса буфера на диск — это недописанный бэкап,
+     * а не мелочь, которую можно проглотить, как при закрытии файла на чтение.
+     *
+     * @throws BackupFileCloseException
+     */
+    public function closeWritten($handle): void
+    {
+        $path = $this->pathOf($handle);
+
+        $flushed = @fflush($handle);
+        $closed = @fclose($handle);
+
+        if (!$flushed || !$closed) {
+            throw new BackupFileCloseException($path);
         }
     }
 
@@ -119,5 +154,10 @@ class FileSystemAdapter
         if ($this->exists($path)) {
             @unlink($path);
         }
+    }
+
+    private function pathOf($handle): string
+    {
+        return (string) (stream_get_meta_data($handle)['uri'] ?? '');
     }
 }
