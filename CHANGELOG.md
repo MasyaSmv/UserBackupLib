@@ -7,6 +7,24 @@
 
 ## [Unreleased]
 
+## [3.1.0] — 2026-09-28
+
+### Добавлено
+
+- Сжатие зашифрованного бэкапа перед шифрованием (WS-3280): gzip встроенным `zlib`
+  уровня 6, потоково. Файл становится в 13–30 раз меньше.
+- Контракты `BackupStreamCompressor` и `BackupStreamDecoder`, реализации
+  `ZlibStreamCompressor`, `ZlibStreamDecompressor`, `SignatureAwareStreamDecoder`;
+  биндинги в `UserBackupServiceProvider`.
+- Исключения `BackupCompressionException` и `BackupDecompressionException` с кодом и
+  `context()`. Оборванный сжатый поток отклоняется, а не читается как целый.
+
+### Совместимость
+
+- Файлы, записанные до 3.1.0 (несжатые v1/v2), читаются без изменений: сжатие
+  распознаётся по сигнатуре gzip после расшифровки.
+- Файлы 3.1.0 не читаются версиями пакета ниже 3.1.0.
+
 ## [2.4.0] — 2026-08-05
 
 ### Исправлено

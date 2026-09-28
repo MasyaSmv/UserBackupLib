@@ -6,7 +6,6 @@ namespace UserDataBackup\Services\Internal;
 
 use UserDataBackup\ValueObjects\BackupHeader;
 use Generator;
-use Iterator;
 
 /**
  * Определяет версию файла бэкапа по первому ключу и отдаёт поток чанков заново целиком.
@@ -25,17 +24,14 @@ final class BackupFormatDetector
      */
     public function detect(iterable $chunks): array
     {
-        $iterator = $this->iterator($chunks);
-        $prefix = '';
+        $stream = ChunkStreamPrefix::of($chunks);
         $format = null;
 
-        while ($format === null && $iterator->valid()) {
-            $prefix .= (string) $iterator->current();
-            $iterator->next();
-            $format = $this->decide($prefix);
+        while ($format === null && $stream->extend()) {
+            $format = $this->decide($stream->prefix());
         }
 
-        return [$format ?? BackupHeader::LEGACY_FORMAT, $this->replay($prefix, $iterator)];
+        return [$format ?? BackupHeader::LEGACY_FORMAT, $stream->replay()];
     }
 
     /**
@@ -64,34 +60,5 @@ final class BackupFormatDetector
         return str_starts_with($firstKey, self::V2_MARKER)
             ? BackupHeader::CURRENT_FORMAT
             : BackupHeader::LEGACY_FORMAT;
-    }
-
-    /**
-     * @param iterable<string> $chunks
-     */
-    private function iterator(iterable $chunks): Iterator
-    {
-        $generator = (static function () use ($chunks): Generator {
-            yield from $chunks;
-        })();
-
-        $generator->current();
-
-        return $generator;
-    }
-
-    /**
-     * @return Generator<int, string>
-     */
-    private function replay(string $prefix, Iterator $rest): Generator
-    {
-        if ($prefix !== '') {
-            yield $prefix;
-        }
-
-        while ($rest->valid()) {
-            yield (string) $rest->current();
-            $rest->next();
-        }
     }
 }

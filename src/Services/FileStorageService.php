@@ -4,9 +4,14 @@ declare(strict_types=1);
 
 namespace UserDataBackup\Services;
 
+use UserDataBackup\Contracts\BackupStreamCompressor;
+use UserDataBackup\Contracts\BackupStreamDecoder;
 use UserDataBackup\Contracts\FileStorageServiceInterface;
 use UserDataBackup\Exceptions\BackupEncryptionException;
 use UserDataBackup\Exceptions\FileStorageException;
+use UserDataBackup\Services\Compression\SignatureAwareStreamDecoder;
+use UserDataBackup\Services\Compression\ZlibStreamCompressor;
+use UserDataBackup\Services\Compression\ZlibStreamDecompressor;
 use UserDataBackup\Services\Internal\BackupChunkReader;
 use UserDataBackup\Services\Internal\BackupFormatDetector;
 use UserDataBackup\Services\Internal\BackupRowIterator;
@@ -22,11 +27,16 @@ use Throwable;
 
 /**
  * Потоковая запись/чтение бэкапов с опциональным шифрованием чанками.
+ *
+ * Зашифрованный файл перед шифрованием сжимается (WS-3280). Как именно — знают
+ * `BackupStreamCompressor` и `BackupStreamDecoder`, сам сервис о формате сжатия не знает.
  */
 class FileStorageService implements FileStorageServiceInterface
 {
     public function __construct(
-        private ?FileSystemAdapter $fileSystem = null
+        private ?FileSystemAdapter $fileSystem = null,
+        private ?BackupStreamCompressor $compressor = null,
+        private ?BackupStreamDecoder $decoder = null
     ) {
     }
 
@@ -99,7 +109,9 @@ class FileStorageService implements FileStorageServiceInterface
      */
     private function detectFormat(string $filePath): array
     {
-        return (new BackupFormatDetector())->detect($this->createChunkReader()->iterateDecryptedChunks($filePath));
+        $chunks = $this->decoder()->decode($this->createChunkReader()->iterateDecryptedChunks($filePath));
+
+        return (new BackupFormatDetector())->detect($chunks);
     }
 
     /**
@@ -236,10 +248,24 @@ class FileStorageService implements FileStorageServiceInterface
     }
 
     /**
+     * Сжимает JSON до шифрования: шифротекст уже не сжимается, а base64 в конверте `Crypt`
+     * раздувает его ещё в 1,78 раза. Одна строка файла — шифротекст порции сжатого потока.
+     *
      * @param resource $readHandle
      * @param resource $writeHandle
      */
     private function encryptStream($readHandle, $writeHandle, string $tempPath, string $encryptedPath): void
+    {
+        foreach ($this->compressor()->compress($this->readPlainChunks($readHandle, $tempPath)) as $chunk) {
+            $this->writeChunk($writeHandle, $this->encryptChunk($chunk, $encryptedPath) . PHP_EOL);
+        }
+    }
+
+    /**
+     * @param resource $readHandle
+     * @return Generator<int, string>
+     */
+    private function readPlainChunks($readHandle, string $tempPath): Generator
     {
         $chunkSize = 5 * 1024 * 1024; // 5 MB
 
@@ -250,7 +276,7 @@ class FileStorageService implements FileStorageServiceInterface
                 break;
             }
 
-            $this->writeChunk($writeHandle, $this->encryptChunk($chunk, $encryptedPath) . PHP_EOL);
+            yield $chunk;
         }
     }
 
@@ -309,5 +335,15 @@ class FileStorageService implements FileStorageServiceInterface
     protected function fileSystem(): FileSystemAdapter
     {
         return $this->fileSystem ??= new FileSystemAdapter();
+    }
+
+    private function compressor(): BackupStreamCompressor
+    {
+        return $this->compressor ??= new ZlibStreamCompressor();
+    }
+
+    private function decoder(): BackupStreamDecoder
+    {
+        return $this->decoder ??= new SignatureAwareStreamDecoder(new ZlibStreamDecompressor());
     }
 }
